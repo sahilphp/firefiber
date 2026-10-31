@@ -1,0 +1,73 @@
+{
+    "name": "sahilphp/firefiber",
+    "description": "HTML-first, event-driven PHP reactivity engine for SahilPHP applications",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "sahilphp",
+        "firefiber",
+        "reactivity",
+        "livewire-alternative",
+        "html-first"
+    ],
+    "homepage": "https://github.com/sahilphp/firefiber",
+    "support": {
+        "issues": "https://github.com/sahilphp/firefiber/issues",
+        "source": "https://github.com/sahilphp/firefiber"
+    },
+    "require": {
+        "php": "^8.2",
+        "sahilphp/framework": "^1.0"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^2.1",
+        "phpunit/php-code-coverage": "^10",
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Sahil\\Firefiber\\": "src/App/Firefiber/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Sahil\\Firefiber\\Tests\\": "tests/",
+            "PHPUnit\\": "vendor/phpunit/phpunit/src/"
+        }
+    },
+    "scripts": {
+        "lint": "find src tests -name '*.php' -print0 | xargs -0 -n1 -P8 php -l",
+        "test": "phpunit --colors=always",
+        "analyse": "phpstan analyse --no-progress",
+        "fix-style": "php-cs-fixer fix --config=../../.php-cs-fixer.dist.php",
+        "check-style": "php-cs-fixer fix --config=../../.php-cs-fixer.dist.php --dry-run --diff",
+        "build-assets": "node scripts/build-assets.cjs",
+        "check-assets": "node scripts/build-assets.cjs --check",
+        "check": [
+            "@lint",
+            "@test",
+            "@analyse"
+        ]
+    },
+    "archive": {
+        "exclude": [
+            "/.github",
+            "/.phpunit.result.cache",
+            "/debug6_click.php",
+            "/node_modules",
+            "/phpunit.json",
+            "/phpunit-src.zip",
+            "/phpunit.phar",
+            "/tests",
+            "/vendor"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.2.0"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

@@ -1,0 +1,14 @@
+/*
+ * Firefiber optional state styles.
+ *
+ * This stylesheet is intentionally small and layout-neutral. It only targets
+ * the default class/attribute hooks the runtime can add. Applications that
+ * use custom class names may omit @fiberstyles entirely.
+ */
+.fiber-loading {
+    cursor: progress;
+}
+
+[data-firefiber-component] [aria-disabled="true"] {
+    cursor: not-allowed;
+}

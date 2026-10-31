@@ -1,0 +1,19 @@
+{
+    "name": "@sahilphp/firefiber-runtime",
+    "private": true,
+    "description": "Browser runtime tests and production asset build for the SahilPHP Firefiber package",
+    "scripts": {
+        "test": "node --test tests/js/*.test.cjs",
+        "test:js": "node --test tests/js/*.test.cjs",
+        "assets:build": "node scripts/build-assets.cjs",
+        "assets:build:obfuscated": "node scripts/build-assets.cjs --obfuscate",
+        "assets:check": "node scripts/build-assets.cjs --check"
+    },
+    "devDependencies": {
+        "javascript-obfuscator": "^4.1.1",
+        "terser": "^5.36.0"
+    },
+    "engines": {
+        "node": ">=18"
+    }
+}

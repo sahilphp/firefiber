@@ -1,0 +1,120 @@
+<?php
+declare(strict_types=1);
+namespace Sahil\Firefiber\Http;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Sahil\Firefiber\Exceptions\CsrfException;
+use Sahil\Firefiber\Exceptions\InvalidSnapshotException;
+use function base64_decode;
+use function base64_encode;
+use function hash_hmac;
+use function random_bytes;
+use function sodium_compare;
+use Slim\Psr7\HttpCodes;
+use Slim\Psr7\Response;
+
+class FirefiberMiddleware implements MiddlewareInterface
+{
+    public const string CSRF_TOKEN_NAME = 'firefiber_csrf';
+    public const string HMAC_KEY_NAME = 'firefiber_hmac_key';
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        $targetHeader = $request->getHeaderLine('X-Firefiber-Target');
+        if ($targetHeader !== '1') {
+            return $handler->handle($request);
+        }
+
+        $this->validateCsrf($request);
+        $this->validateSignature($request);
+
+        $body = $request->getBody();
+        $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+
+        if ($data === null) {
+            return new Response(HttpCodes::BAD_REQUEST, [], json_encode([
+                'status' => 'error',
+                'error' => 'Invalid JSON body',
+            ]));
+        }
+
+        $requestType = $data['type'] ?? 'handleAction';
+
+        switch ($requestType) {
+            case 'getSnapshot':
+                $componentId = $data['componentId'] ?? null;
+                if ($componentId === null) {
+                    return new Response(HttpCodes::BAD_REQUEST, [], json_encode([
+                        'status' => 'error',
+                        'error' => 'Missing componentId',
+                    ]));
+                }
+                return new Response(200, ['Content-Type' => 'application/json'], json_encode([
+                    'status' => 'snapshot',
+                    'componentId' => $componentId,
+                    'state' => [],
+                ]));
+            case 'handleAction':
+            default:
+                $componentId = $data['componentId'] ?? null;
+                $action = $data['action'] ?? null;
+                $payload = $data['payload'] ?? [];
+
+                if ($componentId === null || $action === null) {
+                    return new Response(HttpCodes::BAD_REQUEST, [], json_encode([
+                        'status' => 'error',
+                        'error' => 'Missing componentId or action',
+                    ]));
+                }
+                return new Response(200, ['Content-Type' => 'application/json'], json_encode([
+                    'status' => 'ok',
+                    'componentId' => $componentId,
+                    'action' => $action,
+                    'payload' => $payload,
+                ]));
+        }
+    }
+
+    protected function validateCsrf(ServerRequestInterface $request): void
+    {
+        $requestToken = $request->getHeaderLine('X-Csrf-Token');
+        $sessionToken = $request->getCookieParam('firefiber_csrf');
+
+        if ($requestToken !== $sessionToken) {
+            throw new CsrfException(
+                'CSRF token mismatch between request and session'
+            );
+        }
+    }
+
+    protected function validateSignature(ServerRequestInterface $request): void
+    {
+        $signatureHeader = $request->getHeaderLine('X-Firefiber-Signature');
+
+        if ($signatureHeader === '') {
+            throw new InvalidSnapshotException(
+                'Missing X-Firefiber-Signature header'
+            );
+        }
+
+        $signatureBytes = base64_decode($signatureHeader, true);
+        if ($signatureBytes === false) {
+            throw new InvalidSnapshotException(
+                'Invalid signature encoding'
+            );
+        }
+
+        $hmacKey = getenv('FIREFIBER_HMAC_KEY') ?? random_bytes(32);
+        $expectedSignature = base64_encode(
+            hash_hmac('sha256', $request->getBody(true), $hmacKey, true)
+        );
+
+        if (!sodium_compare($signatureBytes, $expectedSignature)) {
+            throw new InvalidSnapshotException(
+                'Request signature validation failed'
+            );
+        }
+    }
+}

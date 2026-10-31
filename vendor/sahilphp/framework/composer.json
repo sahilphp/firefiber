@@ -1,0 +1,72 @@
+{
+    "name": "sahilphp/framework",
+    "description": "The Sahil Framework.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["framework", "sahilphp"],
+     "authors": [
+        {
+            "name": "Idrisa John",
+            "email": "idrisajohn19@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/sahilphp/framework",
+    "support": {
+        "issues": "https://github.com/sahilphp/framework/issues",
+        "source": "https://github.com/sahilphp/framework"
+    },
+    "require": {
+        "php": "^8.1",
+        "psr/container": "^2.0",
+        "symfony/mailer": "^6.4 || ^7.1",
+        "symfony/mime": "^6.4 || ^7.1"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.75",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^10.5"
+    },
+    "suggest": {
+        "ext-json": "JSON encoding is used by configuration, cache and queue payloads",
+        "ext-mbstring": "Multibyte-aware validation and string helpers (a polyfill is used otherwise)",
+        "ext-openssl": "TLS/SSL SMTP transport and the Encrypter",
+        "ext-pdo": "Database, ORM and migration support"
+    },
+    "autoload": {
+        "psr-4": {
+            "Sahil\\": "src/"
+        },
+        "files": [
+            "src/Support/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Sahil\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "lint": "find src tests -name '*.php' -print0 | xargs -0 -n1 -P8 php -l",
+        "test": "phpunit --colors=always",
+        "analyse": "phpstan analyse --no-progress",
+        "fix-style": "php-cs-fixer fix --config=.php-cs-fixer.dist.php",
+        "check-style": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff",
+        "check": [
+            "@lint",
+            "@test",
+            "@analyse"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "8.1.0"
+        },
+        "allow-plugins": {
+            "phpstan/extension-installer": false
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

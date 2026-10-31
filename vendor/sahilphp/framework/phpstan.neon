@@ -1,0 +1,20 @@
+parameters:
+    level: 6
+    paths:
+        # Production code only: the test suite's own type annotations still
+        # carry level-4/5 debt (documented in the release report).
+        - src
+    excludePaths:
+        # Deliberately namespace-less fixture files (config arrays, routes,
+        # templates) that tests require as plain PHP includes.
+        - tests/Fixtures/*
+        - tests/**/Fixtures/*
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # Level-6 "missing iterable value type" diagnostics are tracked as
+        # documentation debt rather than release blockers: the runtime
+        # contracts are correct, only some array parameters and returns lack
+        # generic annotations. Everything that can be a real defect (undefined
+        # methods, impossible types, dead code) stays enabled.
+        - identifier: missingType.iterableValue
