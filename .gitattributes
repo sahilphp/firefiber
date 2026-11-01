@@ -10,3 +10,6 @@
 /phpunit.phar export-ignore
 /vendor export-ignore
 /node_modules export-ignore
+/docs export-ignore
+/phpunit.xml export-ignore
+
