@@ -54,7 +54,7 @@ final class AssetTagRenderer
 
     /**
      * @param array<string, bool|int|float|string|Stringable|null> $defaults
-     * @param array<array-key, bool|int|float|string|Stringable|null> $extra
+     * @param array<array-key, mixed> $extra
      * @param list<string> $reserved
      */
     private static function render(

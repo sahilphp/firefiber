@@ -1,6 +1,6 @@
 # Composer and GitHub release archives include the built browser assets.
-# Keep `dist/` and `js/` in the archive: the first is served in production,
-# the second is the readable source used for debugging and direct alias.
+# Keep `dist/`, `css/` and `js/` in the archive: the first holds production
+# outputs, the others are readable sources used for diagnostics and aliases.
 /tests export-ignore
 /.github export-ignore
 /.phpunit.result.cache export-ignore
