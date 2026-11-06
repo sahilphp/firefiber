@@ -36,6 +36,7 @@
         }
     },
     "scripts": {
+        "post-create-project-cmd": ["@php scripts/refuse-create-project.php"],
         "lint": "find src tests -name '*.php' -print0 | xargs -0 -n1 -P8 php -l",
         "test": "phpunit --colors=always",
         "analyse": "phpstan analyse --no-progress",
