@@ -11,5 +11,15 @@
 /vendor export-ignore
 /node_modules export-ignore
 /docs export-ignore
+/composer.lock export-ignore
 /phpunit.xml export-ignore
+/phpunit.xml.dist export-ignore
+
+# Local development backups must never ship.
+*.bak export-ignore
+*.bak2 export-ignore
+*_backup.php export-ignore
+*_orig.php export-ignore
+*_start.php export-ignore
+*_integration.php export-ignore
 

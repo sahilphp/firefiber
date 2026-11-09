@@ -54,11 +54,19 @@
         "exclude": [
             "/.github",
             "/.phpunit.result.cache",
+            "/composer.lock",
             "/debug6_click.php",
             "/node_modules",
             "/phpunit.json",
             "/phpunit-src.zip",
             "/phpunit.phar",
+            "/phpunit.xml.dist",
+            "/src/App/Firefiber/Http/FirefiberMiddleware.php.bak",
+            "/src/FirefiberMiddleware.php.bak2",
+            "/src/FirefiberMiddleware_backup.php",
+            "/src/FirefiberMiddleware_integration.php",
+            "/src/FirefiberMiddleware_orig.php",
+            "/src/FirefiberMiddleware_start.php",
             "/tests",
             "/vendor"
         ]
