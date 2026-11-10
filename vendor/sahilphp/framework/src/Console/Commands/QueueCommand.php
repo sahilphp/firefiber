@@ -67,6 +67,19 @@ final class QueueCommand extends Command
     /**
      * @return list<string>
      */
+    public function optionHelp(): array
+    {
+        return [
+            '--queue=Name     Queue to inspect or process (default: configured).',
+            '--once           Work only one job, or retry one failed job.',
+            '--max=N          Stop after processing N jobs.',
+            '--all            Retry every failed job on the queue.',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
     public function examples(): array
     {
         return [

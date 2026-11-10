@@ -447,6 +447,11 @@ final class StorageManager implements StorageContract
             return null;
         }
 
+        // Configured roots are application-relative; realpath() would resolve
+        // them against the working directory (the document root under a web
+        // SAPI) and report private storage as living inside the served tree.
+        $path = absolute_path($path);
+
         $real = realpath($path);
 
         if ($real !== false) {
@@ -496,7 +501,9 @@ final class StorageManager implements StorageContract
      */
     private function createLocalDriver(array $config): LocalDriver
     {
-        $root = (string) ($config['root'] ?? storage_path('uploads'));
+        // The driver mkdir()s and realpath()s this root, so a relative value
+        // would be resolved against the working directory. Anchor it first.
+        $root = absolute_path((string) ($config['root'] ?? storage_path('uploads')));
 
         $isPublic = (bool) ($config['public'] ?? false);
         $permissions = is_array($config['permissions'] ?? null) ? $config['permissions'] : [];

@@ -92,7 +92,9 @@ final class Kernel
         return $this->application->isolatedRequest(function () use ($request): Response {
             // Validate content type: reject unsupported types with 415,
             // allow requests without a content type, and allow JSON/form data.
-            $contentType = $request->contentType();
+            // Compare the media type only: real requests carry parameters
+            // (`multipart/form-data; boundary=…`, `application/json; charset=utf-8`).
+            $contentType = $request->mediaType();
             if ($contentType !== null && !
                 in_array($contentType, ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data'], true)
             ) {

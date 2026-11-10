@@ -68,6 +68,35 @@ if (!function_exists('base_path')) {
     }
 }
 
+if (!function_exists('absolute_path')) {
+    /**
+     * Anchor a configured filesystem path to the application base directory.
+     *
+     * Configured paths are application-relative: config defaults are built
+     * with storage_path(), and the generated .env mirrors that shape (for
+     * example `storage/framework/sessions`). Native filesystem calls resolve a
+     * relative path against the process working directory, which a web SAPI
+     * sets to the document root — silently relocating session files and
+     * private uploads into the served tree, where clients could download them.
+     * Anchoring here keeps every consumer independent of the working
+     * directory. Absolute paths are returned untouched.
+     */
+    function absolute_path(string $path): string
+    {
+        if ($path === '') {
+            return $path;
+        }
+
+        $normalized = str_replace('\\', '/', $path);
+
+        if (str_starts_with($normalized, '/') || preg_match('/^[A-Za-z]:\//', $normalized) === 1) {
+            return $path;
+        }
+
+        return base_path($path);
+    }
+}
+
 if (!function_exists('session')) {
     /**
      * Get / set the specified session value.

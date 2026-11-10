@@ -75,6 +75,30 @@ final class UiCommand extends Command
     /**
      * @return list<string>
      */
+    public function optionHelp(): array
+    {
+        return [
+            '--path=DIR          Project root to operate on (default: this application).',
+            '--profile=NAME      Frontend asset profile.',
+            '--ui=NAME           UI integration name.',
+            '--source=FILE       Theme token file for ui:theme.',
+            '--dry-run           Print the plan without writing anything.',
+            '--merge             Merge managed entries instead of replacing files.',
+            '--overwrite         Replace managed files (backups are kept).',
+            '--force             Force the operation.',
+            '--no-install        Do not install npm packages.',
+            '--json              Print a machine-readable report.',
+            '--clean             Remove the build directory before building.',
+            '--host=HOST         Development server interface.',
+            '--port=PORT         Development server port.',
+            '--no-interaction    Run without prompts.',
+            '--interactive       Force interactive prompts.',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
     public function examples(): array
     {
         return [

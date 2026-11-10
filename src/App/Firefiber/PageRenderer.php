@@ -26,6 +26,16 @@ use Sahil\Http\Response;
  */
 final class PageRenderer
 {
+    /**
+     * Components currently being rendered, keyed by object id.
+     *
+     * A component that reaches itself through `children()` would otherwise
+     * recurse until PHP exhausts the stack; nesting must be a tree.
+     *
+     * @var array<int, string>
+     */
+    private array $rendering = [];
+
     public function __construct(
         private readonly ApplicationContract $application,
         private readonly StateStorageInterface $stateStorage,
@@ -69,6 +79,26 @@ final class PageRenderer
     }
 
     public function renderComponent(Component $component, ?Component $parent = null, array $query = [], bool $force = false): string
+    {
+        $objectId = spl_object_id($component);
+
+        if (isset($this->rendering[$objectId])) {
+            throw new RuntimeException(sprintf(
+                'Circular Firefiber component nesting detected while rendering [%s].',
+                $component::class,
+            ));
+        }
+
+        $this->rendering[$objectId] = $component::class;
+
+        try {
+            return $this->renderComponentInstance($component, $parent, $query, $force);
+        } finally {
+            unset($this->rendering[$objectId]);
+        }
+    }
+
+    private function renderComponentInstance(Component $component, ?Component $parent, array $query, bool $force): string
     {
         $this->applyQuerySync($component, $query);
 

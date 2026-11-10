@@ -157,25 +157,30 @@ abstract class Command
             $this->description(),
         ];
 
-        $options = ['  -h, --help'.str_repeat(' ', 14).'Show this command help.'];
-
-        foreach ($this->optionSpecs() as $name => $value) {
-            $options[] = sprintf(
-                '  --%s%s%s',
-                $name,
-                $value === null ? '' : '='.$value,
-                str_repeat(' ', max(1, 20 - strlen($name.($value === null ? '' : '='.$value)))),
-            );
-        }
-
         $lines[] = '';
         $lines[] = 'Options:';
+        $lines[] = '  -h, --help   Show this command help.';
+
+        // optionHelp() lines are the descriptive form. Track which options
+        // they document so an option is never printed twice, then append any
+        // remaining parser specs without a description.
+        $documented = [];
 
         foreach ($this->optionHelp() as $line) {
             $lines[] = '  '.$line;
+
+            if (preg_match('/^--([A-Za-z0-9-]+)/', trim($line), $matches) === 1) {
+                $documented[$matches[1]] = true;
+            }
         }
 
-        $lines[] = implode("\n", $options);
+        foreach ($this->optionSpecs() as $name => $value) {
+            if (isset($documented[$name])) {
+                continue;
+            }
+
+            $lines[] = sprintf('  --%s%s', $name, $value === null ? '' : '='.$value);
+        }
 
         if ($this->examples() !== []) {
             $lines[] = '';

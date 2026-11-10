@@ -71,6 +71,17 @@ final class ProjectSetupCommand extends Command
     /**
      * @return list<string>
      */
+    public function optionHelp(): array
+    {
+        return [
+            '--force          key:generate: replace an APP_KEY that is already set.',
+            '--path=DIR       Project root to operate on (default: this application).',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
     public function examples(): array
     {
         return $this->command === 'key:generate'

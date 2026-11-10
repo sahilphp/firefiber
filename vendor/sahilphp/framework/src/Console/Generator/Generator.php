@@ -36,6 +36,7 @@ final class Generator
         'policy' => 'Policies',
         'provider' => 'Providers',
         'command' => 'Console\\Commands',
+        'job' => 'Jobs',
     ];
 
     private readonly ApplicationPaths $paths;
@@ -51,6 +52,62 @@ final class Generator
     }
 
     /**
+     * @return array{0: string, 1: list<string>}
+     */
+    public function splitClassName(string $name): array
+    {
+        $original = trim($name);
+
+        if ($original === '') {
+            throw new GeneratorException('A class name is required.');
+        }
+
+        $normalized = str_replace('\\', '/', $original);
+
+        if (str_starts_with($normalized, '/') || str_contains($normalized, '..') || str_contains($normalized, '//')) {
+            throw new GeneratorException(sprintf('Invalid class name [%s]: path traversal is not allowed.', $original));
+        }
+
+        $normalized = trim($normalized, '/');
+        $parts = explode('/', $normalized);
+
+        foreach ($parts as $part) {
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $part) !== 1) {
+                throw new GeneratorException(sprintf(
+                    'Invalid class name [%s]: [%s] is not a valid PHP identifier segment.',
+                    $original,
+                    $part,
+                ));
+            }
+
+            if (in_array(strtolower($part), self::RESERVED, true)) {
+                throw new GeneratorException(sprintf(
+                    'Invalid class name [%s]: [%s] is a reserved PHP word.',
+                    $original,
+                    $part,
+                ));
+            }
+        }
+
+        $class = array_pop($parts);
+
+        return [$class, $parts];
+    }
+
+    /**
+     * Write an arbitrary generated file through the shared safe writer.
+     */
+    public function writeFile(
+        string $target,
+        string $contents,
+        bool $force,
+        string $className,
+        ?string $namespace = null,
+    ): GeneratedFile {
+        return $this->write($target, $contents, $force, $className, $namespace);
+    }
+
+    /**
      * @param array{force?: bool, migration?: bool} $options
      */
     public function generate(string $type, string $name, array $options = []): GeneratorResult
@@ -58,7 +115,7 @@ final class Generator
         $force = ($options['force'] ?? false) === true;
 
         return match ($type) {
-            'controller', 'model', 'middleware', 'policy', 'provider', 'command' => $this->classFile(
+            'controller', 'model', 'middleware', 'policy', 'provider', 'command', 'job' => $this->classFile(
                 $type,
                 $name,
                 $force,
@@ -87,9 +144,11 @@ final class Generator
             'controller' => Stubs::controller($namespace, $class),
             'model' => Stubs::model($namespace, $class, $this->tableName($class)),
             'middleware' => Stubs::middleware($namespace, $class),
-            'policy' => Stubs::policy($namespace, $class, $applicationNamespace.'\\Models\\'.$this->policyModelName($class)),
+            'policy' => Stubs::policy($namespace, $class, $this->policyModelClass($applicationNamespace, $subNamespace, $class)),
             'provider' => Stubs::provider($namespace, $class),
             'command' => Stubs::command($namespace, $class, $this->commandName($class)),
+            'job' => Stubs::job($namespace, $class),
+            default => throw new GeneratorException(sprintf('Unknown generator type [%s].', $type)),
         };
 
         $migrationTarget = null;
@@ -224,49 +283,6 @@ final class Generator
         ]);
     }
 
-    /**
-     * @return array{0: string, 1: list<string>}
-     */
-    private function splitClassName(string $name): array
-    {
-        $original = trim($name);
-
-        if ($original === '') {
-            throw new GeneratorException('A class name is required.');
-        }
-
-        $normalized = str_replace('\\', '/', $original);
-
-        if (str_starts_with($normalized, '/') || str_contains($normalized, '..') || str_contains($normalized, '//')) {
-            throw new GeneratorException(sprintf('Invalid class name [%s]: path traversal is not allowed.', $original));
-        }
-
-        $normalized = trim($normalized, '/');
-        $parts = explode('/', $normalized);
-
-        foreach ($parts as $part) {
-            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $part) !== 1) {
-                throw new GeneratorException(sprintf(
-                    'Invalid class name [%s]: [%s] is not a valid PHP identifier segment.',
-                    $original,
-                    $part,
-                ));
-            }
-
-            if (in_array(strtolower($part), self::RESERVED, true)) {
-                throw new GeneratorException(sprintf(
-                    'Invalid class name [%s]: [%s] is a reserved PHP word.',
-                    $original,
-                    $part,
-                ));
-            }
-        }
-
-        $class = array_pop($parts);
-
-        return [$class, $parts];
-    }
-
     private function assertIdentifier(string $value, string $label): void
     {
         if (preg_match('/^[a-z][a-z0-9_]*$/', $value) !== 1) {
@@ -276,6 +292,23 @@ final class Generator
         if (in_array($value, self::RESERVED, true)) {
             throw new GeneratorException(sprintf('Invalid %s name [%s]: reserved word.', $label, $value));
         }
+    }
+
+    /**
+     * The model a policy documents, keeping any nested namespace segments:
+     * `Admin/UserPolicy` points at `App\Models\Admin\User`.
+     *
+     * @param list<string> $subNamespace
+     */
+    private function policyModelClass(string $applicationNamespace, array $subNamespace, string $class): string
+    {
+        $model = $applicationNamespace.'\\Models';
+
+        if ($subNamespace !== []) {
+            $model .= '\\'.implode('\\', $subNamespace);
+        }
+
+        return $model.'\\'.$this->policyModelName($class);
     }
 
     /**
@@ -328,6 +361,7 @@ final class Generator
     ): GeneratedFile {
         $this->paths->assertInside($target);
         $relative = $this->paths->relative($target);
+        $contents = rtrim($contents, "\r\n")."\n";
         $backup = null;
 
         if (is_file($target)) {

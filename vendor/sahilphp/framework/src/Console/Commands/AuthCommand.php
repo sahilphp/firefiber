@@ -75,6 +75,7 @@ final class AuthCommand extends Command
     {
         return [
             '--ui=NAME        tailwind or bootstrap (detected when omitted).',
+            '--profile=NAME   Alias for --ui=NAME.',
             '--force          Replace files that already exist (originals are backed up).',
             '--dry-run        Print the plan without writing anything.',
             '--path=DIR       Project root to scaffold (default: this application).',

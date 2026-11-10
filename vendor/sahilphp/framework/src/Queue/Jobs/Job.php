@@ -15,9 +15,11 @@ use Sahil\Contracts\Queue\Jobs\JobContract;
  * {
  *     public function __construct(private readonly string $email) {}
  *
- *     public function handle(): void
+ *     public function handle(): mixed
  *     {
  *         // send
+ *
+ *         return null;
  *     }
  * }
  *

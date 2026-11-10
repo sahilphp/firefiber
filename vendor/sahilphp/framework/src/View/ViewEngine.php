@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sahil\View;
 
 use Sahil\Contracts\Assets\AssetManagerContract;
+use Sahil\Contracts\View\ComponentRendererContract;
 use Sahil\Contracts\View\RenderingViewContract;
 use Throwable;
 
@@ -50,7 +51,19 @@ final class ViewEngine implements RenderingViewContract
         private readonly TemplateResolver $resolver,
         private readonly TemplateCompiler $compiler,
         private readonly ?AssetManagerContract $assets = null,
+        private readonly ?ComponentRendererContract $components = null,
     ) {
+    }
+
+    /**
+     * The component renderer a template reaches through `$__ctx->component()`.
+     *
+     * Null when the application has not installed a server-driven UI layer;
+     * templates that never request a component are unaffected.
+     */
+    public function components(): ?ComponentRendererContract
+    {
+        return $this->components;
     }
 
     /**
@@ -85,7 +98,7 @@ final class ViewEngine implements RenderingViewContract
 
             $visited[$current] = true;
 
-            $context = new RenderContext($this, $data, $sections, 0, $this->assets);
+            $context = new RenderContext($this, $data, $sections, 0, $this->assets, $this->components);
             $output = $this->evaluate($current, $context);
 
             $parent = $context->parent();
@@ -163,7 +176,7 @@ final class ViewEngine implements RenderingViewContract
             ));
         }
 
-        $context = new RenderContext($this, array_replace($data, $overrides), $sections, $depth, $this->assets);
+        $context = new RenderContext($this, array_replace($data, $overrides), $sections, $depth, $this->assets, $this->components);
 
         return $this->evaluate($name, $context);
     }

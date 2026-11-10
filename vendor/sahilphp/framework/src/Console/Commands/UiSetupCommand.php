@@ -55,6 +55,19 @@ final class UiSetupCommand extends Command
     /**
      * @return list<string>
      */
+    public function optionHelp(): array
+    {
+        return [
+            '--ui-kit=KIT     firefiber, react, vue, svelte or none.',
+            '--css=NAME       tailwind or bootstrap.',
+            '--path=DIR       Project root to configure (default: this application).',
+            '--no-interaction Fail instead of prompting when a value is missing.',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
     public function examples(): array
     {
         return [

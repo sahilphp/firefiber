@@ -61,21 +61,60 @@ Use `--inline` to generate an inline component:
 php sahil firefiber:component UserProfile --inline
 ```
 
-This generates an inline component that is designed to be composed directly
-into a page's `components()` method rather than generated as a standalone file.
+This writes a component intended to be rendered directly inside a page view
+rather than composed through the page's `components()` method. It is the same
+`Sahil\Firefiber\Component` subclass contract and the same PSR-4 file layout
+(`app/Firefiber/Components/UserProfile.php`), so it can be inserted with either
+template syntax below.
 
-The generated component is a `Sahil\Firefiber\Component` subclass but is
-structured for inline use within pages.
-
-### Options:
+### Options
 
 - `--force` — replace existing files after backing them up.
 - `--path=DIR` — application root.
 - `--inline` — generate an inline component (default: standalone).
 
-The generated component is a `Sahil\Firefiber\Component` subclass with
-server-side state, a `render()` method, and action handlers. Nested names
-create nested namespaces and directories.
+Nested names create nested namespaces and directories.
+
+## Component template syntaxes
+
+Both syntaxes are supported in any `.sahil.php` view and compile to the same
+call, so a component renders identically either way:
+
+```html
+<!-- Firefiber HTML tag syntax (self-closing) -->
+<fiber:component name="UserProfile" />
+
+<!-- Firefiber HTML tag syntax (open/close) -->
+<fiber:component name="UserProfile"></fiber:component>
+
+<!-- PHP directive -->
+@component('UserProfile')
+
+<!-- Fully-qualified class name, both syntaxes -->
+<fiber:component name="App\Firefiber\Components\UserProfile" />
+@component('App\Firefiber\Components\UserProfile')
+```
+
+Short names resolve below `App\Firefiber\Components`; nested names such as
+`Admin/Stats` or `Admin\Stats` resolve to the matching sub-namespace. Markup is
+produced by `PageRenderer`, so the signed hydration snapshot, CSRF token and
+action endpoint are identical for both syntaxes. No directive, tag or marker
+comment survives into the response.
+
+Component properties are passed as attributes. Kebab-case attributes map to
+camelCase properties, and a leading `:` binds a template expression:
+
+```html
+<fiber:component name="Profile" user-id="42" title="My Profile" />
+<fiber:component name="Profile" :user-id="user.id" />
+```
+
+Properties are validated against the component's `$propertyDefinitions`; an
+undeclared or invalid property is rejected. Each tag creates an independent
+instance with its own identity and state, and components may nest through
+`children()`. An unknown component, a class that does not extend
+`Sahil\Firefiber\Component`, or a component that reaches itself through
+`children()` fails with a clear error instead of rendering a placeholder.
 
 ## Security
 

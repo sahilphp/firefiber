@@ -42,7 +42,7 @@ final class FirefiberComponentCommand extends Command
         return [
             'force' => null,
             'path' => 'DIR',
-            'inline' => false,
+            'inline' => null,
         ];
     }
 

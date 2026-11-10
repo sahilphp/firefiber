@@ -51,7 +51,9 @@ final class FirefiberGenerator
                 $namespace .= '\\'.implode('\\', $subNamespace);
             }
             [, $directory] = $this->paths->resolve($namespace);
-            $target = rtrim($directory, '/').'/inline.'.$class.'.php';
+            // PSR-4 maps a class to `<Class>.php`; an `inline.` prefix would
+            // make the generated component unloadable.
+            $target = rtrim($directory, '/').'/'.$class.'.php';
 
             return new GeneratorResult([
                 $this->write($target, Stubs::inlineComponent($namespace, $class), $force, $class, $namespace),

@@ -230,12 +230,25 @@ final class Request
     }
 
     /**
+     * Content-Type without parameters, lower-cased (`multipart/form-data; boundary=…`
+     * normalizes to `multipart/form-data`). Null when the header is missing or empty.
+     *
+     * Comparisons against declared media types must use this instead of
+     * contentType(): real multipart and charset-qualified requests always
+     * carry parameters.
+     */
+    public function mediaType(): ?string
+    {
+        return self::normalizeMediaType($this->contentType);
+    }
+
+    /**
      * Whether the body is declared JSON (`application/json`, ignoring
      * charset parameters).
      */
     public function hasJsonBody(): bool
     {
-        return self::mediaType($this->contentType) === 'application/json';
+        return self::normalizeMediaType($this->contentType) === 'application/json';
     }
 
     /**
@@ -243,7 +256,7 @@ final class Request
      */
     public function hasFormBody(): bool
     {
-        $media = self::mediaType($this->contentType);
+        $media = self::normalizeMediaType($this->contentType);
 
         return $media === 'application/x-www-form-urlencoded' || $media === 'multipart/form-data';
     }
@@ -508,7 +521,7 @@ final class Request
     /**
      * Media type without parameters, lower-cased; null when missing/odd.
      */
-    private static function mediaType(?string $contentType): ?string
+    private static function normalizeMediaType(?string $contentType): ?string
     {
         if ($contentType === null) {
             return null;

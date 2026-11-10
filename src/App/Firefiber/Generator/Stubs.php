@@ -223,11 +223,13 @@ declare(strict_types=1);
 namespace {{namespace}};
 
 use Sahil\Firefiber\Component;
+use Sahil\Firefiber\Exceptions\UnknownActionException;
 
 /**
  * {{class}} - inline component
  *
- * An inline component rendered directly within a page.
+ * An inline component rendered directly within a page. Insert it with
+ * `<fiber:component name="{{class}}" />` or `@component('{{class}}')`.
  */
 final class {{class}} extends Component
 {

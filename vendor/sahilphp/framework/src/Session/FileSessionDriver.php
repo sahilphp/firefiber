@@ -27,9 +27,18 @@ final class FileSessionDriver implements SessionDriverContract
 
     private const ID_PATTERN = '/^[a-f0-9]{40}$/';
 
-    public function __construct(
-        private readonly string $path,
-    ) {
+    private readonly string $path;
+
+    public function __construct(string $path)
+    {
+        // The configured directory is application-relative (the generated .env
+        // ships `storage/framework/sessions`). mkdir() and every subsequent
+        // file call resolve it against the working directory, which a web SAPI
+        // sets to the document root — that would publish live session files
+        // over HTTP. Anchor it to the application base before anything is
+        // created.
+        $this->path = absolute_path($path);
+
         $this->ensureDirectoryExists();
     }
 

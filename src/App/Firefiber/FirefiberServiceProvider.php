@@ -10,6 +10,7 @@ use Sahil\Contracts\Cache\CacheContract;
 use Sahil\Contracts\Foundation\ApplicationContract;
 use Sahil\Contracts\Session\SessionContract;
 use Sahil\Contracts\Storage\StorageContract;
+use Sahil\Contracts\View\ComponentRendererContract;
 use Sahil\Contracts\View\ViewContract;
 use Sahil\Firefiber\Assets\AssetRepository;
 use Sahil\Firefiber\Assets\FirefiberAssetManager;
@@ -178,6 +179,17 @@ class FirefiberServiceProvider extends ServiceProvider
                 );
             },
         );
+
+        // The template layer reaches components through this contract, so
+        // `@component(...)` and `<fiber:component ... />` share one renderer.
+        $container->singleton(
+            ComponentRendererContract::class,
+            static fn (Container $container): ComponentRenderer => new ComponentRenderer(
+                $container->make(ApplicationContract::class),
+            ),
+        );
+
+        $container->alias('firefiber.components', ComponentRendererContract::class);
 
         $container->singleton(
             PageRegistry::class,

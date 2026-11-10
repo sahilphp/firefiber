@@ -62,6 +62,35 @@ final class GeneratorTest extends TestCase
         self::assertStringContainsString('data-firefiber-bind="count"', $component->render());
     }
 
+    public function test_component_command_generates_a_standalone_component_by_default(): void
+    {
+        [$exit, $out] = $this->executeCommand(new FirefiberComponentCommand(), ['Profile']);
+
+        self::assertSame(0, $exit);
+        self::assertStringContainsString('Created app/Firefiber/Components/Profile.php', $out);
+        self::assertTrue(class_exists(\Acme\Firefiber\Components\Profile::class));
+        self::assertFileDoesNotExist($this->root.'/app/Firefiber/Components/inline.Profile.php');
+
+        // The standalone stub is the usable counter component.
+        $component = new \Acme\Firefiber\Components\Profile();
+        self::assertSame(['count' => 1], $component->handleAction('increment', []));
+    }
+
+    public function test_inline_flag_generates_an_inline_component_that_autoloads(): void
+    {
+        [$exit, $out] = $this->executeCommand(new FirefiberComponentCommand(), ['Banner', '--inline']);
+
+        self::assertSame(0, $exit);
+        self::assertStringContainsString('Created app/Firefiber/Components/Banner.php', $out);
+        self::assertTrue(class_exists(\Acme\Firefiber\Components\Banner::class));
+
+        $component = new \Acme\Firefiber\Components\Banner();
+        self::assertSame(
+            ['message' => 'hello'],
+            $component->handleAction('updateMessage', ['message' => 'hello']),
+        );
+    }
+
     public function test_nested_component_names_use_nested_directories_and_namespaces(): void
     {
         [$exit, $out] = $this->executeCommand(new FirefiberComponentCommand(), ['Admin/Stats']);

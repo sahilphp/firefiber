@@ -240,6 +240,36 @@ PHP, [
         ]);
     }
 
+    public static function job(string $namespace, string $class): string
+    {
+        return strtr(<<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Sahil\Queue\Jobs\Job;
+
+/**
+ * {{class}}.
+ *
+ * A job is serialized whole: store plain data only, never services or
+ * credentials. Dispatch it with `(new {{class}}())->dispatch()`.
+ */
+final class {{class}} extends Job
+{
+    public function handle(): mixed
+    {
+        return null;
+    }
+}
+PHP, [
+            '{{namespace}}' => $namespace,
+            '{{class}}' => $class,
+        ]);
+    }
+
     public static function seeder(string $class): string
     {
         return strtr(<<<'PHP'

@@ -338,12 +338,12 @@ final class Application
             }
 
             $command = new $class();
-            $command->bindApplication($application);
 
             if (!$command instanceof Command) {
                 throw new ConsoleException(sprintf('%s must extend %s.', $class, Command::class));
             }
 
+            $command->bindApplication($application);
             $this->register($command);
         }
     }
@@ -392,6 +392,7 @@ final class Application
             'policy',
             'provider',
             'command',
+            'job',
             'seeder',
         ] as $type) {
             $this->register(new Commands\GeneratorCommand($type));

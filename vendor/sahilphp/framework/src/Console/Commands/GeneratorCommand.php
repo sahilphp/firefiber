@@ -69,6 +69,11 @@ final class GeneratorCommand extends Command
             'argument' => '<Name>',
             'examples' => ['php sahil unda:command SendInvoice'],
         ],
+        'job' => [
+            'description' => 'Create a queued job implementing the SahilPHP Job contract.',
+            'argument' => '<Name>',
+            'examples' => ['php sahil unda:job ProcessPayment'],
+        ],
         'seeder' => [
             'description' => 'Create a database seeder in database/seeders.',
             'argument' => '<Name>',

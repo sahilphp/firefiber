@@ -62,6 +62,17 @@ final class ScheduleCommand extends Command
     /**
      * @return list<string>
      */
+    public function optionHelp(): array
+    {
+        return [
+            '--at=DATETIME    Evaluate the schedule at a specific instant.',
+            '--only=Name      Restrict the run to one scheduled task.',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
     public function examples(): array
     {
         return [
