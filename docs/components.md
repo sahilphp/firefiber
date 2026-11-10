@@ -349,6 +349,20 @@ The signed `data-firefiber-snapshot` attribute always carries
 server-authoritative state; optimistic patches never change it. Out-of-order
 responses cannot overwrite a newer authoritative state.
 
+## Stale snapshots
+
+The signed snapshot in `data-firefiber-snapshot` is accepted for
+`firefiber.snapshot_expiration_seconds` (default `300`). A page left open
+longer than that — or a second request that already moved the component
+forward — answers `409 Conflict` (`errorCode` 5 = expired, 6 = modified).
+
+The runtime recovers by itself: it requests the server's authoritative
+snapshot (`type: "getSnapshot"`), applies it to the component, emits
+`firefiber:resync`, and replays the action once with the fresh snapshot and a
+new request id. If the server can no longer produce a snapshot (the component
+state was pruned), the interaction fails as before with `firefiber:expired` /
+`firefiber:error` — nothing is retried blindly.
+
 ## Secure uploads
 
 Uploads use a dedicated multipart endpoint (`POST /firefiber/uploads` by

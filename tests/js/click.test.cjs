@@ -368,13 +368,59 @@ test('server errors are surfaced without retrying', async () => {
     assert.equal(fetch.calls.length, 1, 'Server errors must not be retried');
 });
 
-test('expired snapshots are surfaced without retrying or auto-refreshing', async () => {
+test('expired snapshots are re-synchronised and the action is replayed once', async () => {
+    const fetch = captureFetch((call) => {
+        if (call === 1) {
+            return responseFor({ status: 'error', error: 'Snapshot expired', errorCode: 5 }, 409);
+        }
+
+        if (call === 2) {
+            return responseFor({
+                status: 'snapshot',
+                componentId: COMPONENT_ID,
+                state: { count: 7 },
+                snapshot: makeSnapshot(COMPONENT_ID, 7, 'resynced-snapshot'),
+            });
+        }
+
+        return responseFor(successPayload(COMPONENT_ID, 8));
+    });
+    const { button, fetch: fetcher } = setup({ fetch });
+    const resynced = waitForEvent(button, 'firefiber:resync');
+    const success = waitForEvent(button, 'firefiber:success');
+
+    dispatchClick(button);
+
+    const resyncEvent = await resynced;
+    const event = await success;
+
+    assert.equal(resyncEvent.detail.errorCode, 5);
+    assert.equal(event.detail.status, 200);
+    assert.equal(fetcher.calls.length, 3, 'action, getSnapshot, replayed action');
+
+    const resyncBody = JSON.parse(fetcher.calls[1].options.body);
+    assert.equal(resyncBody.type, 'getSnapshot');
+    assert.equal(resyncBody.componentId, COMPONENT_ID);
+    assert.equal(resyncBody.csrfToken, CSRF_TOKEN);
+
+    const retryBody = JSON.parse(fetcher.calls[2].options.body);
+    assert.equal(retryBody.type, 'handleAction');
+    assert.equal(retryBody.action, 'increment');
+    assert.equal(retryBody.snapshot.signature, 'resynced-snapshot', 'the replay uses the fresh snapshot');
+    assert.notEqual(
+        retryBody.requestId,
+        JSON.parse(fetcher.calls[0].options.body).requestId,
+        'the replay needs a new request id so the server replay guard accepts it',
+    );
+});
+
+test('a failed re-synchronisation still surfaces the expired snapshot', async () => {
     const fetch = captureFetch(() => responseFor({
         status: 'error',
         error: 'Snapshot expired',
         errorCode: 5,
     }, 409));
-    const { button } = setup({ fetch });
+    const { button, fetch: fetcher } = setup({ fetch });
     const expired = waitForEvent(button, 'firefiber:expired');
 
     dispatchClick(button);
@@ -383,7 +429,8 @@ test('expired snapshots are surfaced without retrying or auto-refreshing', async
 
     assert.equal(event.detail.status, 409);
     assert.equal(event.detail.errorCode, 5);
-    assert.equal(fetch.calls.length, 1, 'Expired snapshots must not trigger automatic refresh');
+    assert.equal(fetcher.calls.length, 2, 'one action, one failed re-sync, no blind replay');
+    assert.equal(JSON.parse(fetcher.calls[1].options.body).type, 'getSnapshot');
 });
 
 test('removal and stop clean up click listeners', async () => {

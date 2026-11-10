@@ -13,6 +13,11 @@
 
 ### Fixed
 
+- Actions on a page whose signed snapshot aged out (default 300 s) no longer
+  fail with a silent `409 Conflict`: the runtime fetches the authoritative
+  snapshot (`getSnapshot`), applies it, emits `firefiber:resync` and replays
+  the action once. When no snapshot can be produced, the interaction fails with
+  the previous `firefiber:expired` / `firefiber:error` event instead.
 - `firefiber:component --inline` is a flag again (`--inline` without a value no
   longer fails with "requires a value"), and inline components are written to
   `<Class>.php` so PSR-4 autoloading finds them. The inline stub now imports

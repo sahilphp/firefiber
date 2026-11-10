@@ -287,11 +287,27 @@ test('fiber:submit rejects server errors without retrying', async () => {
     assert.equal(fetcher.calls.length, 1, 'Server errors must not be retried');
 });
 
-test('fiber:submit rejects expired snapshots without automatic refresh', async () => {
-    const fetch = captureFetch(() => responseFor({ status: 'error', error: 'expired', errorCode: 5 }, 409));
+test('fiber:submit re-synchronises an expired snapshot and replays the submit once', async () => {
+    const fetch = captureFetch((call) => {
+        if (call === 1) {
+            return responseFor({ status: 'error', error: 'expired', errorCode: 5 }, 409);
+        }
+
+        if (call === 2) {
+            return responseFor({
+                status: 'snapshot',
+                componentId: COMPONENT_ID,
+                state: { count: 1 },
+                snapshot: makeSnapshot(COMPONENT_ID, 1, 'resynced-form-snapshot'),
+            });
+        }
+
+        return responseFor(successPayload(COMPONENT_ID, 2));
+    });
     const { form, fetch: fetcher } = setupForm({ fetch });
 
-    const expired = waitForEvent(form, 'firefiber:expired');
+    const resynced = waitForEvent(form, 'firefiber:resync');
+    const success = waitForEvent(form, 'firefiber:success');
     form.dispatchEvent({
         type: 'submit',
         target: form,
@@ -299,12 +315,17 @@ test('fiber:submit rejects expired snapshots without automatic refresh', async (
         stopPropagation() {},
     });
 
-    const event = await expired;
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const resyncEvent = await resynced;
+    const event = await success;
 
-    assert.equal(event.detail.status, 409);
-    assert.equal(event.detail.errorCode, 5);
-    assert.equal(fetcher.calls.length, 1, 'Expired snapshots must not trigger automatic refresh');
+    assert.equal(resyncEvent.detail.errorCode, 5);
+    assert.equal(event.detail.status, 200);
+    assert.equal(fetcher.calls.length, 3, 'submit, getSnapshot, replayed submit');
+    assert.equal(JSON.parse(fetcher.calls[1].options.body).type, 'getSnapshot');
+    assert.equal(
+        JSON.parse(fetcher.calls[2].options.body).snapshot.signature,
+        'resynced-form-snapshot',
+    );
 });
 
 test('fiber:submit supports .prevent and .once modifiers', async () => {

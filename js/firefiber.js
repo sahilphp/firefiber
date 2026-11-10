@@ -3159,6 +3159,142 @@
         };
     }
 
+    /**
+     * Send one action request and hand back the pieces every caller needs.
+     */
+    async function sendActionRequest(config, action, payload, requestId) {
+        var snapshot = config.snapshot;
+        var bodyData = {
+            protocolVersion: config.protocolVersion,
+            type: 'handleAction',
+            requestId: requestId,
+            componentId: config.componentId,
+            componentName: config.componentName,
+            componentClass: config.componentName,
+            action: action,
+            payload: payload,
+            csrfToken: config.csrfToken,
+            signature: snapshot.signature,
+            snapshot: snapshot,
+        };
+        var body = JSON.stringify(bodyData);
+        var signature = await signRequestBody(body, config);
+        var headers = Object.assign({}, config.headers, {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Firefiber-Target': '1',
+            'X-Csrf-Token': config.csrfToken,
+        });
+
+        if (nonEmptyString(signature)) {
+            headers['X-Firefiber-Signature'] = signature;
+        }
+
+        var response = await config.fetch(config.endpoint, {
+            method: 'POST',
+            headers: headers,
+            body: body,
+            credentials: config.credentials,
+            cache: 'no-store',
+            redirect: 'follow',
+        });
+
+        return {
+            response: response,
+            payload: await readResponsePayload(response),
+            status: response && response.status !== undefined ? Number(response.status) : 0,
+            ok: isSuccessfulResponse(response),
+        };
+    }
+
+    /**
+     * Whether the server rejected the request because the client snapshot is
+     * no longer current. The server answers 409 Conflict for that case
+     * (5 = expired snapshot, 6 = modified snapshot); any other status is a
+     * different failure and must not be retried.
+     */
+    function isStaleSnapshot(exchange) {
+        if (exchange.ok || exchange.status !== 409 || !exchange.payload) {
+            return false;
+        }
+
+        var errorCode = exchange.payload.errorCode !== undefined
+            ? Number(exchange.payload.errorCode)
+            : null;
+
+        return errorCode === null || errorCode === 5 || errorCode === 6;
+    }
+
+    /**
+     * Fetch the server's authoritative snapshot for this component and adopt
+     * it, so a stale page can recover without a full reload. Returns false when
+     * the server has no state for the component (nothing can be replayed).
+     */
+    async function resynchronize(element, config) {
+        if (
+            !nonEmptyString(config.endpoint)
+            || !nonEmptyString(config.componentId)
+            || typeof config.fetch !== 'function'
+        ) {
+            return false;
+        }
+
+        var bodyData = {
+            protocolVersion: config.protocolVersion,
+            type: 'getSnapshot',
+            requestId: createRequestId(),
+            componentId: config.componentId,
+            componentName: config.componentName,
+            componentClass: config.componentName,
+            csrfToken: config.csrfToken,
+            signature: config.snapshot && nonEmptyString(config.snapshot.signature)
+                ? config.snapshot.signature
+                : '',
+        };
+
+        var response;
+        var payload;
+
+        try {
+            response = await config.fetch(config.endpoint, {
+                method: 'POST',
+                headers: Object.assign({}, config.headers, {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Firefiber-Target': '1',
+                    'X-Csrf-Token': config.csrfToken,
+                }),
+                body: JSON.stringify(bodyData),
+                credentials: config.credentials,
+                cache: 'no-store',
+                redirect: 'follow',
+            });
+
+            payload = await readResponsePayload(response);
+        } catch (error) {
+            return false;
+        }
+
+        if (!isSuccessfulResponse(response) || !payload || payload.status !== 'snapshot') {
+            return false;
+        }
+
+        var snapshot = payload.snapshot;
+
+        if (
+            !snapshot
+            || typeof snapshot !== 'object'
+            || !nonEmptyString(snapshot.signature)
+        ) {
+            return false;
+        }
+
+        rememberSnapshot(config.componentId, snapshot);
+        applySnapshotToDom(config.componentId, snapshot);
+
+        return true;
+    }
+
     function handleClick(event, context) {
         dispatchClickAction(event, context).catch(function (error) {
             reportError(error, context);
@@ -3319,43 +3455,32 @@
         }
 
         try {
-            var bodyData = {
-                protocolVersion: config.protocolVersion,
-                type: 'handleAction',
-                requestId: requestId,
-                componentId: config.componentId,
-                componentName: config.componentName,
-                componentClass: config.componentName,
-                action: action,
-                payload: payload,
-                csrfToken: config.csrfToken,
-                signature: config.snapshot.signature,
-                snapshot: config.snapshot,
-            };
-            var body = JSON.stringify(bodyData);
-            var signature = await signRequestBody(body, config);
-            var headers = Object.assign({}, config.headers, {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-Firefiber-Target': '1',
-                'X-Csrf-Token': config.csrfToken,
-            });
-            if (nonEmptyString(signature)) {
-                headers['X-Firefiber-Signature'] = signature;
-            }
-    
-            var response = await config.fetch(config.endpoint, {
-                method: 'POST',
-                headers: headers,
-                body: body,
-                credentials: config.credentials,
-                cache: 'no-store',
-                redirect: 'follow',
-            });
+            var exchange = await sendActionRequest(config, action, payload, requestId);
 
-            var responsePayload = await readResponsePayload(response);
-            var status = response && response.status !== undefined ? Number(response.status) : 0;
-            var ok = isSuccessfulResponse(response);
+            // A signed snapshot carries a short replay window. When the server
+            // rejects it as stale (the page was open too long, or a concurrent
+            // request already moved the component forward), fetch the
+            // authoritative snapshot and replay the action once instead of
+            // leaving the control silently dead.
+            if (isStaleSnapshot(exchange) && await resynchronize(element, config)) {
+                var refreshed = resolveActionConfig(element) || config;
+
+                emitRuntimeEvent(element, 'firefiber:resync', {
+                    requestId: requestId,
+                    componentId: config.componentId,
+                    action: action,
+                    errorCode: exchange.payload && exchange.payload.errorCode !== undefined
+                        ? Number(exchange.payload.errorCode)
+                        : null,
+                });
+
+                exchange = await sendActionRequest(refreshed, action, payload, createRequestId());
+            }
+
+            var response = exchange.response;
+            var responsePayload = exchange.payload;
+            var status = exchange.status;
+            var ok = exchange.ok;
             var detail = {
                 requestId: requestId,
                 componentId: config.componentId,
