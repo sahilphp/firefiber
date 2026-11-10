@@ -37,12 +37,45 @@ needed.
 
 ```bash
 php sahil firefiber:component Counter
+php sahil firefiber:component Counter --inline
 php sahil firefiber:component Admin/Stats
 ```
 
+### Default: Standalone component
+
+Without the `--inline` option, the generator creates a standalone component:
+
+```bash
+php sahil firefiber:component UserProfile
+```
+
+This generates a standalone `Sahil\Firefiber\Component` subclass with its own
+file in `app/Firefiber/Components/`, complete with server-side state,
+`render()` method, and action handlers.
+
+### Explicit inline generation
+
+Use `--inline` to generate an inline component:
+
+```bash
+php sahil firefiber:component UserProfile --inline
+```
+
+This generates an inline component that is designed to be composed directly
+into a page's `components()` method rather than generated as a standalone file.
+
+The generated component is a `Sahil\Firefiber\Component` subclass but is
+structured for inline use within pages.
+
+### Options:
+
+- `--force` — replace existing files after backing them up.
+- `--path=DIR` — application root.
+- `--inline` — generate an inline component (default: standalone).
+
 The generated component is a `Sahil\Firefiber\Component` subclass with
-server-side state, a `render()` method, and an `increment`/`decrement` action
-pair. Nested names create nested namespaces and directories.
+server-side state, a `render()` method, and action handlers. Nested names
+create nested namespaces and directories.
 
 ## Security
 

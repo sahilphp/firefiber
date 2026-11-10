@@ -31,6 +31,7 @@ Generate pages and reusable reactive components through the standard
 ```bash
 php sahil firefiber:page Demo --example
 php sahil firefiber:component Counter
+php sahil firefiber:component Counter --inline
 php sahil firefiber:component Admin/Stats
 ```
 

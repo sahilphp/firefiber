@@ -203,6 +203,65 @@ PHP, [
     }
 
     /**
+     * Generate an inline component stub.
+     * Inline components are rendered directly within a page's components() method
+     * and do not have their own dedicated file. They use the Component base class
+     * but are designed to be composed into pages rather than generated as standalone
+     * files.
+     *
+     * @param string $namespace The component namespace
+     * @param string $class The component class name
+     * @return string The inline component PHP source code
+     */
+    public static function inlineComponent(string $namespace, string $class): string
+    {
+        return strtr(<<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Sahil\Firefiber\Component;
+
+/**
+ * {{class}} - inline component
+ *
+ * An inline component rendered directly within a page.
+ */
+final class {{class}} extends Component
+{
+    public function __construct()
+    {
+        parent::__construct(['message' => ''], ['updateMessage']);
+    }
+
+    protected function formRules(): array
+    {
+        return [];
+    }
+
+    public function render(): string
+    {
+        return '<div data-firefiber-bind="message">test</div>';
+    }
+
+    public function handleAction(string $action, array $payload): array
+    {
+        if ($action !== 'updateMessage') {
+            throw new UnknownActionException($action, $this->id());
+        }
+
+        return ['message' => (string) ($payload['message'] ?? '')];
+    }
+}
+PHP, [
+                    '{{namespace}}' => $namespace,
+                    '{{class}}' => $class,
+                ]);
+    }
+
+    /**
      * @param list<array{0: string, 1: string}> $components
      */
     public static function page(

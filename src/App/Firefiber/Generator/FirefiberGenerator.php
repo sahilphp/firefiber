@@ -40,9 +40,25 @@ final class FirefiberGenerator
         $this->paths = ApplicationPaths::for($basePath);
     }
 
-    public function generateComponent(string $name, bool $force, string $kind = 'counter'): GeneratorResult
+    public function generateComponent(string $name, bool $force, string $kind = 'counter', bool $inline = false): GeneratorResult
     {
         [$class, $subNamespace] = $this->splitClassName($name);
+
+        if ($inline) {
+            // Inline component: generate in the page's component list namespace
+            $namespace = $this->paths->applicationNamespace().'\Firefiber\Components';
+            if ($subNamespace !== []) {
+                $namespace .= '\\'.implode('\\', $subNamespace);
+            }
+            [, $directory] = $this->paths->resolve($namespace);
+            $target = rtrim($directory, '/').'/inline.'.$class.'.php';
+
+            return new GeneratorResult([
+                $this->write($target, Stubs::inlineComponent($namespace, $class), $force, $class, $namespace),
+            ]);
+        }
+
+        // Standalone component
         $namespace = $this->paths->applicationNamespace().'\Firefiber\Components';
 
         if ($subNamespace !== []) {
@@ -107,6 +123,7 @@ final class FirefiberGenerator
                     $componentClass,
                     $force,
                     strtolower($componentClass),
+                    false,
                 )->files[0];
             }
         }

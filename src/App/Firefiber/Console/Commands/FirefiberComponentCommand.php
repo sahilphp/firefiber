@@ -29,7 +29,7 @@ final class FirefiberComponentCommand extends Command
 
     public function usage(): string
     {
-        return 'php sahil firefiber:component <Name> [--force] [--path=DIR]';
+        return 'php sahil firefiber:component <Name> [--force] [--path=DIR] [--inline]';
     }
 
     public function category(): string
@@ -42,6 +42,7 @@ final class FirefiberComponentCommand extends Command
         return [
             'force' => null,
             'path' => 'DIR',
+            'inline' => false,
         ];
     }
 
@@ -53,6 +54,7 @@ final class FirefiberComponentCommand extends Command
         return [
             '--force    Overwrite an existing file after backing it up.',
             '--path=DIR Application root to generate into (default: this application).',
+            '--inline  Generate an inline component (default: standalone component).',
         ];
     }
 
@@ -63,6 +65,7 @@ final class FirefiberComponentCommand extends Command
     {
         return [
             'php sahil firefiber:component Counter',
+            'php sahil firefiber:component Counter --inline',
             'php sahil firefiber:component Admin/Stats',
         ];
     }
@@ -86,6 +89,8 @@ final class FirefiberComponentCommand extends Command
             $result = (new FirefiberGenerator($root))->generateComponent(
                 $name,
                 $input->flag('force'),
+                'counter',
+                $input->flag('inline'),
             );
         } catch (GeneratorException $exception) {
             throw new ConsoleException($exception->getMessage());
