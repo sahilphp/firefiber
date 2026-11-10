@@ -580,14 +580,14 @@ abstract class ApplicationTestCase extends TestCase
     /**
      * Console entry point for the application under test.
      *
-     * The conventional location is `<application-root>/bin/sahil`. Override
-     * this when an application keeps its CLI elsewhere. The framework test
-     * fixture has no CLI, so {@see \Sahil\Tests\FrameworkTestCase} overrides
-     * this with an explicit failure instead of probing a nonexistent binary.
+     * The conventional location is `<application-root>/sahil`. Override this
+     * when an application keeps its CLI elsewhere. The framework test fixture
+     * has no CLI, so {@see \Sahil\Tests\FrameworkTestCase} overrides this with
+     * an explicit failure instead of probing a nonexistent binary.
      */
     protected function consoleBinary(): string
     {
-        return $this->basePath().'/bin/sahil';
+        return $this->basePath().'/sahil';
     }
 
     /**

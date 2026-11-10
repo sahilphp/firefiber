@@ -134,7 +134,7 @@ final class AssetAliasTest extends TestCase
 
     public function test_non_firefiber_entries_are_delegated_to_application_assets(): void
     {
-        $application = new class implements AssetManagerContract {
+        $application = new class () implements AssetManagerContract {
             /** @var list<string> */
             public array $calls = [];
 

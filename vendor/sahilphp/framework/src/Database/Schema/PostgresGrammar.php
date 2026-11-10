@@ -52,6 +52,7 @@ final class PostgresGrammar extends AbstractGrammar
             'integer' => 'INTEGER',
             'string' => sprintf('VARCHAR(%d)', $column->lengthValue() ?? 255),
             'text' => 'TEXT',
+            'longText' => 'TEXT',
             'boolean' => 'BOOLEAN',
             'timestamp', 'dateTime' => 'TIMESTAMP',
             'decimal' => sprintf('DECIMAL(%d, %d)', $column->precisionValue() ?? 10, $column->scaleValue() ?? 2),

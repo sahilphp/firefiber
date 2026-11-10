@@ -195,4 +195,3 @@ final class ClickIntegrationTest extends TestCase
         rmdir($directory);
     }
 }
-

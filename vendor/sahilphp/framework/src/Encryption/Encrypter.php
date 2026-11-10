@@ -74,7 +74,7 @@ final class Encrypter
     {
         if ($key === null || trim($key) === '') {
             throw new EncryptionException(
-                'No application key is configured. Set APP_KEY (run `bin/sahil key:generate`).',
+                'No application key is configured. Set APP_KEY (run `php sahil key:generate`).',
             );
         }
 

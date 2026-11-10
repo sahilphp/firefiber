@@ -46,10 +46,10 @@ final class SnapshotIntegrity
      *  This binds the component ID to the state, prevents modification without detection,
      *  and includes protocol version and timestamp for replay protection.
      */
-    public function signSnapshot(string $componentId, array $state, int $timestamp, string $protocolVersion): string
+    public function signSnapshot(string $componentId, array $state, int $timestamp, string $protocolVersion, ?string $sessionId = null, ?string $userId = null, ?string $componentClass = null): string
     {
         $stateHash = $this->hashState($state);
-        $signedData = "{$componentId}|{$stateHash}|{$timestamp}|{$protocolVersion}";
+        $signedData = "{$componentId}|{$stateHash}|{$timestamp}|{$protocolVersion}|" . ($sessionId ?? '') . '|' . ($userId ?? '') . '|' . ($componentClass ?? '');
         return base64_encode(hash_hmac('sha256', $signedData, $this->hmacKey, true));
     }
 
@@ -57,7 +57,7 @@ final class SnapshotIntegrity
      *  Returns the timestamp if valid, or false if invalid.
      *  Also checks expiration if configured.
      */
-    public function verifySnapshot(string $componentId, array $state, int $timestamp, string $protocolVersion, ?string $receivedSignature = null): bool|int
+    public function verifySnapshot(string $componentId, array $state, int $timestamp, string $protocolVersion, ?string $receivedSignature = null, ?string $sessionId = null, ?string $userId = null, ?string $componentClass = null): bool|int
     {
         // Check expiration
         if ($this->expirationSeconds !== null && $timestamp < time() - $this->expirationSeconds) {
@@ -65,7 +65,7 @@ final class SnapshotIntegrity
         }
 
         // Verify signature
-        $expectedSignature = $this->signSnapshot($componentId, $state, $timestamp, $protocolVersion);
+        $expectedSignature = $this->signSnapshot($componentId, $state, $timestamp, $protocolVersion, $sessionId, $userId, $componentClass);
 
         if ($receivedSignature === null) {
             return false; // No signature provided
@@ -76,7 +76,7 @@ final class SnapshotIntegrity
             return false; // Invalid signature encoding
         }
 
-        $expectedBytes = base64_encode(hash_hmac('sha256', "{$componentId}|{$this->hashState($state)}|{$timestamp}|{$protocolVersion}", $this->hmacKey, true));
+        $expectedBytes = base64_encode(hash_hmac('sha256', "{$componentId}|{$this->hashState($state)}|{$timestamp}|{$protocolVersion}|" . ($sessionId ?? '') . '|' . ($userId ?? '') . '|' . ($componentClass ?? ''), $this->hmacKey, true));
         // Decode expected to compare
         $expectedBytesDecoded = base64_decode($expectedBytes, true);
         if ($expectedBytesDecoded === false) {

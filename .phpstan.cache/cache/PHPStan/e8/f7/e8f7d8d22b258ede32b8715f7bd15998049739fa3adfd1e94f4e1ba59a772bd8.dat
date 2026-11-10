@@ -1,0 +1,5 @@
+O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:35:"v3-6.75.0.4-dev-master@e4f5f6c-8.2-";s:4:"data";a:11:{s:13:"locatedSource";a:2:{s:5:"class";s:68:"PHPStan\BetterReflection\SourceLocator\Located\InternalLocatedSource";s:4:"data";a:4:{s:4:"name";s:11:"ENT_HTML401";s:8:"filename";s:45:"phpstorm-stubs:standard/standard_defines.stub";s:13:"extensionName";s:8:"standard";s:9:"aliasName";N;}}s:4:"name";s:11:"ENT_HTML401";s:9:"shortName";s:11:"ENT_HTML401";s:5:"value";a:2:{s:4:"code";s:1:"0";s:10:"attributes";a:6:{s:9:"startLine";i:8;s:7:"endLine";i:8;s:13:"startTokenPos";i:9;s:12:"startFilePos";i:145;s:11:"endTokenPos";i:9;s:10:"endFilePos";i:145;}}s:10:"docComment";s:115:"/**
+ * Handle code as HTML 4.01.
+ * @since 5.4
+ * @link https://php.net/manual/en/function.htmlspecialchars.php
+ */";s:10:"attributes";a:0:{}s:9:"startLine";i:8;s:7:"endLine";i:8;s:11:"startColumn";i:1;s:9:"endColumn";i:24;s:9:"namespace";N;}}

@@ -198,7 +198,7 @@ final class UiConsole
         $this->line();
         $this->line('Next steps:');
         $this->line('  npm install            # install frontend dependencies');
-        $this->line('  bin/sahil ui:build     # build production assets');
+        $this->line('  php sahil ui:build     # build production assets');
 
         if (!$options['no_install'] && $this->hasNode()) {
             $result = $this->runner()->run(['npm', 'install'], $basePath);
@@ -210,7 +210,7 @@ final class UiConsole
             }
 
             $this->emitProcessOutput($result);
-            $this->line('Dependencies installed. Run `bin/sahil ui:build` to build assets.');
+            $this->line('Dependencies installed. Run `php sahil ui:build` to build assets.');
         } elseif (!$options['no_install']) {
             $this->line('Node.js was not found; skipping `npm install`. Run it manually when Node is available.');
         }
@@ -231,7 +231,7 @@ final class UiConsole
 
         if ($script === null) {
             throw new UiException(
-                'package.json has no "build" script. Run `bin/sahil ui:install --merge` '
+                'package.json has no "build" script. Run `php sahil ui:install --merge` '
                 .'to add the generated scripts (existing scripts are preserved).',
             );
         }
@@ -311,7 +311,7 @@ final class UiConsole
 
         if ($script === null) {
             throw new UiException(
-                'package.json has no "dev" script. Run `bin/sahil ui:install --merge` '
+                'package.json has no "dev" script. Run `php sahil ui:install --merge` '
                 .'to add the generated scripts (existing scripts are preserved).',
             );
         }
@@ -718,7 +718,7 @@ final class UiConsole
 
         throw new UiException(sprintf(
             'Frontend dependencies are not installed (node_modules/vite is missing).%s'
-            .'Run `bin/sahil ui:install` or `%s install`.',
+            .'Run `php sahil ui:install` or `%s install`.',
             PHP_EOL,
             $toolchain->packageManager ?? 'npm',
         ));
@@ -745,7 +745,7 @@ final class UiConsole
         $path = $basePath.'/package.json';
 
         if (!is_file($path)) {
-            throw new UiException('package.json is missing. Run `bin/sahil ui:install` first.');
+            throw new UiException('package.json is missing. Run `php sahil ui:install` first.');
         }
 
         $decoded = json_decode((string) file_get_contents($path), true);
@@ -930,7 +930,7 @@ final class UiConsole
         $manifest = [
             'profile' => $profile->value,
             'generated_at' => gmdate('Y-m-d\TH:i:s\Z'),
-            'installed_by' => 'bin/sahil ui:install',
+            'installed_by' => 'php sahil ui:install',
         ];
 
         $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

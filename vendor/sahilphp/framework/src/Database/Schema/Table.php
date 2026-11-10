@@ -118,6 +118,11 @@ final class Table
         return $this->addColumn(new ColumnDefinition($column, 'text'));
     }
 
+    public function longText(string $column): ColumnDefinition
+    {
+        return $this->addColumn(new ColumnDefinition($column, 'longText'));
+    }
+
     public function boolean(string $column): ColumnDefinition
     {
         return $this->addColumn(new ColumnDefinition($column, 'boolean'));

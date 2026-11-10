@@ -1,0 +1,9 @@
+O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:80:"v3-6.75.0.4-8.2-6e0dd9b00b0e05efdfafdaa81ab70235748e7e4e9bf8a46be9778c3945000664";s:4:"data";a:22:{s:13:"locatedSource";a:2:{s:5:"class";s:60:"PHPStan\BetterReflection\SourceLocator\Located\LocatedSource";s:4:"data";a:2:{s:4:"name";s:38:"App\Providers\FirefiberServiceProvider";s:8:"filename";s:81:"/home/jinx/Devs/sahilphp/firefiber/src/App/Providers/FirefiberServiceProvider.php";}}s:9:"namespace";s:13:"App\Providers";s:4:"name";s:38:"App\Providers\FirefiberServiceProvider";s:9:"shortName";s:24:"FirefiberServiceProvider";s:11:"isInterface";b:0;s:7:"isTrait";b:0;s:6:"isEnum";b:0;s:12:"isBackedEnum";b:0;s:9:"modifiers";i:32;s:10:"docComment";s:377:"/**
+ * Backwards-compatible application provider name.
+ *
+ * The canonical provider now lives in the package namespace
+ * ({@see \Sahil\Firefiber\FirefiberServiceProvider}) so Composer can
+ * autoload it. This alias keeps existing installations that reference
+ * `App\Providers\FirefiberServiceProvider` working while giving them the
+ * package-managed asset route as well.
+ */";s:10:"attributes";a:0:{}s:9:"startLine";i:15;s:7:"endLine";i:17;s:11:"startColumn";i:1;s:9:"endColumn";i:1;s:15:"parentClassName";s:40:"Sahil\Firefiber\FirefiberServiceProvider";s:20:"implementsClassNames";a:0:{}s:15:"traitClassNames";a:0:{}s:18:"immediateConstants";a:0:{}s:19:"immediateProperties";a:0:{}s:16:"immediateMethods";a:0:{}s:10:"traitsData";a:4:{s:7:"aliases";a:0:{}s:9:"modifiers";a:0:{}s:11:"precedences";a:0:{}s:6:"hashes";a:0:{}}}}

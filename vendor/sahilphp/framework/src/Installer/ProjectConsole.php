@@ -13,7 +13,7 @@ use Throwable;
  * Terminal workflow for creating a new SahilPHP application.
  *
  * The command is intentionally available from the starter-kit's existing
- * `bin/sahil` entry point: no global binary and no second CLI framework.
+ * `php sahil` entry point: no global binary and no second CLI framework.
  */
 final class ProjectConsole
 {
@@ -247,7 +247,7 @@ final class ProjectConsole
 
         throw new InstallerException(
             'Project name is required when the terminal is non-interactive. '
-            .'Pass a name (for example: bin/sahil new my-app --ui=tailwind) or use --path with a directory name.',
+            .'Pass a name (for example: php sahil new my-app --ui=tailwind) or use --path with a directory name.',
         );
     }
 
@@ -335,7 +335,7 @@ final class ProjectConsole
         $io->line(<<<'TEXT'
             SahilPHP Installer
 
-            Usage: bin/sahil new [name] [options]
+            Usage: php sahil new [name] [options]
 
             Create a new application from the SahilPHP starter-kit. The installer
             copies only application source files, then installs exactly one UI
@@ -352,9 +352,9 @@ final class ProjectConsole
               -h, --help            Show this help text
 
             Examples:
-              bin/sahil new my-app
-              bin/sahil new my-app --path=/tmp/my-app --ui=tailwind
-              bin/sahil new my-app --ui=bootstrap --no-install --no-interaction
+              php sahil new my-app
+              php sahil new my-app --path=/tmp/my-app --ui=tailwind
+              php sahil new my-app --ui=bootstrap --no-install --no-interaction
             TEXT);
     }
 }

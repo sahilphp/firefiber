@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Sahil\View;
 
 use Sahil\Contracts\Assets\AssetManagerContract;
-use Sahil\Contracts\View\ViewContract;
+use Sahil\Contracts\View\RenderingViewContract;
 use Throwable;
 
 /**
@@ -38,7 +38,7 @@ use Throwable;
  * the success and the failure path, so a template error can never leave an
  * unbalanced buffer behind (or leak partial output into the response).
  */
-final class ViewEngine implements ViewContract
+final class ViewEngine implements RenderingViewContract
 {
     /**
      * Include nesting limit. Reaching it means a template includes itself
@@ -57,6 +57,18 @@ final class ViewEngine implements ViewContract
      * @param array<string, mixed> $data
      */
     public function render(string $view, array $data = []): string
+    {
+        return $this->renderView($view, $data)->markup();
+    }
+
+    /**
+     * Render a template and keep its metadata (template name, data and
+     * rendering context) so a frontend adapter can use the original view
+     * instead of re-reading finished HTML.
+     *
+     * @param array<string, mixed> $data
+     */
+    public function renderView(string $view, array $data = []): RenderedView
     {
         $sections = new SectionBag();
         $visited = [];
@@ -88,7 +100,10 @@ final class ViewEngine implements ViewContract
             $current = $parent;
         }
 
-        return $output;
+        return new RenderedView($view, $data, $output, [
+            'engine' => 'sahil',
+            'path' => $this->resolver->resolve($view),
+        ]);
     }
 
     public function exists(string $view): bool

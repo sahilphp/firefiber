@@ -16,13 +16,14 @@
         "source": "https://github.com/sahilphp/firefiber"
     },
     "require": {
-        "php": "^8.2",
-        "sahilphp/framework": "^1.0"
+        "php": "^8.3",
+        "sahilphp/framework": "^1.1"
     },
     "require-dev": {
         "phpstan/phpstan": "^2.1",
         "phpunit/php-code-coverage": "^10",
-        "phpunit/phpunit": "^10.5"
+        "phpunit/phpunit": "^10.5",
+        "friendsofphp/php-cs-fixer": "^3.75"
     },
     "autoload": {
         "psr-4": {
@@ -36,12 +37,14 @@
         }
     },
     "scripts": {
-        "post-create-project-cmd": ["@php scripts/refuse-create-project.php"],
+        "post-create-project-cmd": [
+            "@php scripts/refuse-create-project.php"
+        ],
         "lint": "find src tests -name '*.php' -print0 | xargs -0 -n1 -P8 php -l",
         "test": "phpunit --colors=always",
         "analyse": "phpstan analyse --no-progress",
-        "fix-style": "php-cs-fixer fix --config=../../.php-cs-fixer.dist.php",
-        "check-style": "php-cs-fixer fix --config=../../.php-cs-fixer.dist.php --dry-run --diff",
+        "fix-style": "php-cs-fixer fix --config=.php-cs-fixer.dist.php",
+        "check-style": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff",
         "build-assets": "node scripts/build-assets.cjs",
         "check-assets": "node scripts/build-assets.cjs --check",
         "check": [
@@ -74,7 +77,7 @@
     "config": {
         "sort-packages": true,
         "platform": {
-            "php": "8.2.0"
+            "php": "8.3.0"
         }
     },
     "minimum-stability": "stable",

@@ -7,6 +7,7 @@ namespace Sahil\Database;
 use PDO;
 use Sahil\Database\Drivers\MySqlDriver;
 use Sahil\Database\Drivers\PostgresDriver;
+use Sahil\Database\Drivers\SqliteDriver;
 
 /**
  * Builds validated PDO connections from configuration arrays.
@@ -14,21 +15,19 @@ use Sahil\Database\Drivers\PostgresDriver;
  * Accepted configuration (documented in README):
  *
  *     [
- *         'driver'   => 'mysql',       // 'mysql' | 'pgsql'
- *         'host'     => '127.0.0.1',
- *         'port'     => 3306,          // int
- *         'database' => 'sahil',
- *         'username' => 'app',
- *         'password' => 'secret',      // never logged, never in messages
+ *         'driver'   => 'sqlite',      // 'sqlite' | 'mysql' | 'pgsql'
+ *         'database' => 'database/database.sqlite', // sqlite file, or :memory:
+ *         // mysql/pgsql also use host, port, database, username, password
  *         'charset'  => 'utf8mb4',     // mysql only
  *     ]
  */
 final class ConnectionFactory
 {
-    /** @var array{mysql: class-string<MySqlDriver>, pgsql: class-string<PostgresDriver>} */
+    /** @var array{mysql: class-string<MySqlDriver>, pgsql: class-string<PostgresDriver>, sqlite: class-string<SqliteDriver>} */
     private const DRIVERS = [
         'mysql' => MySqlDriver::class,
         'pgsql' => PostgresDriver::class,
+        'sqlite' => SqliteDriver::class,
     ];
 
     /**
@@ -60,6 +59,10 @@ final class ConnectionFactory
             ));
         }
 
+        if ($driver === 'sqlite') {
+            $this->ensureSqliteFile($configuration);
+        }
+
         $dsn = $driverInstance->dsn($configuration);
 
         /** @var ?string $username */
@@ -77,5 +80,31 @@ final class ConnectionFactory
         );
 
         return Connection::connect($driverInstance, $dsn, $username, $password, $dialectOptions, $factory);
+    }
+
+    /**
+     * SQLite creates the database file on first connect but not its
+     * directory. Creating both here means a fresh project can run
+     * `php sahil migrate` with no database configuration at all.
+     *
+     * @param array<string, mixed> $configuration
+     */
+    private function ensureSqliteFile(array $configuration): void
+    {
+        $database = $configuration['database'] ?? null;
+
+        if (!is_string($database) || trim($database) === '' || $database === ':memory:' || is_file($database)) {
+            return;
+        }
+
+        $directory = dirname($database);
+
+        if (!is_dir($directory) && !@mkdir($directory, 0o775, true) && !is_dir($directory)) {
+            throw new ConnectionException(sprintf('Unable to create the SQLite directory [%s].', $directory));
+        }
+
+        if (@touch($database) === false) {
+            throw new ConnectionException(sprintf('Unable to create the SQLite database file [%s].', $database));
+        }
     }
 }

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Sahil\Auth;
 
+use InvalidArgumentException;
 use Sahil\Contracts\Auth\AuthenticatableContract;
 use Sahil\Contracts\Auth\UserProviderContract;
 use Sahil\Database\Connection;
+use Sahil\Orm\Model;
 
 /**
  * Database user provider.
@@ -20,7 +22,19 @@ final class DatabaseUserProvider implements UserProviderContract
     public function __construct(
         private readonly Connection $connection,
         private readonly string $table = 'users',
+        private readonly string $modelClass = SimpleUser::class,
     ) {
+        if ($modelClass !== SimpleUser::class
+            && (!class_exists($modelClass)
+                || !is_subclass_of($modelClass, Model::class)
+                || !is_subclass_of($modelClass, AuthenticatableContract::class))) {
+            throw new InvalidArgumentException(sprintf(
+                'Database user model [%s] must extend [%s] and implement [%s].',
+                $modelClass,
+                Model::class,
+                AuthenticatableContract::class,
+            ));
+        }
     }
 
     public function retrieveByIdentifier(int|string $identifier): ?AuthenticatableContract
@@ -38,7 +52,7 @@ final class DatabaseUserProvider implements UserProviderContract
             return null;
         }
 
-        return new SimpleUser($row);
+        return $this->userFromRow($row);
     }
 
     public function retrieveByCredentials(array $credentials): ?AuthenticatableContract
@@ -63,7 +77,38 @@ final class DatabaseUserProvider implements UserProviderContract
             return null;
         }
 
-        return new SimpleUser($row);
+        return $this->userFromRow($row);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function userFromRow(array $row): AuthenticatableContract
+    {
+        if ($this->modelClass === SimpleUser::class) {
+            return new SimpleUser($row);
+        }
+
+        if (!is_a($this->modelClass, Model::class, true)) {
+            throw new InvalidArgumentException(sprintf(
+                'Database user model [%s] must extend [%s].',
+                $this->modelClass,
+                Model::class,
+            ));
+        }
+
+        $modelClass = $this->modelClass;
+        $user = new $modelClass($row, true);
+
+        if (!$user instanceof AuthenticatableContract) {
+            throw new InvalidArgumentException(sprintf(
+                'Database user model [%s] must implement [%s].',
+                $modelClass,
+                AuthenticatableContract::class,
+            ));
+        }
+
+        return $user;
     }
 
     public function validateCredentials(AuthenticatableContract $user, array $credentials): bool

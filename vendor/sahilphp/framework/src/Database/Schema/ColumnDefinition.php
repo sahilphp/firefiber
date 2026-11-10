@@ -24,6 +24,7 @@ final class ColumnDefinition
         'integer',
         'string',
         'text',
+        'longText',
         'boolean',
         'timestamp',
         'dateTime',

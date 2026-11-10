@@ -28,6 +28,7 @@ final class ExpressionCompiler
         'last' => ['method' => 'last', 'arity' => 1],
         'join' => ['method' => 'join', 'arity' => 2],
         'asset' => ['method' => 'asset', 'arity' => 1, 'context' => true],
+        'csrf_field' => ['method' => 'csrfField', 'arity' => 0, 'context' => true],
     ];
 
     /** @var list<array{type: string, value: string}> */

@@ -45,6 +45,19 @@
             "Sahil\\Tests\\": "tests/"
         }
     },
+    "archive": {
+        "exclude": [
+            "/.github",
+            "/.php-cs-fixer.cache",
+            "/.phpstan.cache",
+            "/.phpunit.cache",
+            "/composer.lock",
+            "/docs",
+            "/node_modules",
+            "/tests",
+            "/vendor"
+        ]
+    },
     "scripts": {
         "lint": "find src tests -name '*.php' -print0 | xargs -0 -n1 -P8 php -l",
         "test": "phpunit --colors=always",

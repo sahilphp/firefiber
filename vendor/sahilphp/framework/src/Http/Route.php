@@ -141,6 +141,12 @@ final class Route
     }
 
     /**
+     * Middleware to run for this route, outermost first.
+     *
+     * Entries are `MiddlewareContract` instances, class-strings resolved through
+     * the container, or {@see \Sahil\Http\Middleware\MiddlewareSpec} values when
+     * the middleware needs per-route parameters.
+     *
      * @param object|class-string|list<object|class-string>|null $middleware
      */
     public function middleware(array|object|string|null $middleware): self

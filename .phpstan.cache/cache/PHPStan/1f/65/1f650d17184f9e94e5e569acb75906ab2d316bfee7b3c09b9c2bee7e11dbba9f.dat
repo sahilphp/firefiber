@@ -1,0 +1,23 @@
+O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:35:"v3-6.75.0.4-dev-master@e4f5f6c-8.2-";s:4:"data";a:17:{s:4:"name";s:11:"is_callable";s:10:"parameters";a:3:{s:5:"value";a:14:{s:4:"name";s:5:"value";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"mixed";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:27;s:7:"endLine";i:27;s:11:"startColumn";i:26;s:9:"endColumn";i:37;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}s:11:"syntax_only";a:14:{s:4:"name";s:11:"syntax_only";s:7:"default";a:2:{s:4:"code";s:6:"\false";s:10:"attributes";a:6:{s:9:"startLine";i:27;s:7:"endLine";i:27;s:13:"startTokenPos";i:23;s:12:"startFilePos";i:1139;s:11:"endTokenPos";i:23;s:10:"endFilePos";i:1143;}}s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:4:"bool";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:27;s:7:"endLine";i:27;s:11:"startColumn";i:40;s:9:"endColumn";i:64;s:14:"parameterIndex";i:1;s:10:"isOptional";b:1;}s:13:"callable_name";a:14:{s:4:"name";s:13:"callable_name";s:7:"default";a:2:{s:4:"code";s:5:"\null";s:10:"attributes";a:6:{s:9:"startLine";i:27;s:7:"endLine";i:27;s:13:"startTokenPos";i:31;s:12:"startFilePos";i:1164;s:11:"endTokenPos";i:31;s:10:"endFilePos";i:1167;}}s:4:"type";N;s:10:"isVariadic";b:0;s:5:"byRef";b:1;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:27;s:7:"endLine";i:27;s:11:"startColumn";i:67;s:9:"endColumn";i:88;s:14:"parameterIndex";i:2;s:10:"isOptional";b:1;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:4:"bool";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:968:"/**
+ * Verify that the contents of a variable can be called as a function
+ * @link https://php.net/manual/en/function.is-callable.php
+ * @param callable|mixed $value <p>
+ * The value to check
+ * </p>
+ * @param bool $syntax_only [optional] <p>
+ * If set to <b>TRUE</b> the function only verifies that
+ * name might be a function or method. It will only
+ * reject simple variables that are not strings, or an array that does
+ * not have a valid structure to be used as a callback. The valid ones
+ * are supposed to have only 2 entries, the first of which is an object
+ * or a string, and the second a string.
+ * </p>
+ * @param string &$callable_name [optional] <p>
+ * Receives the "callable name". In the example below it is
+ * "someClass::someMethod". Note, however, that despite the implication
+ * that someClass::SomeMethod() is a callable static method, this is not
+ * the case.
+ * </p>
+ * @return bool <b>TRUE</b> if $var is callable, <b>FALSE</b>
+ * otherwise.
+ */";s:9:"startLine";i:27;s:7:"endLine";i:29;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:8:"isStatic";b:0;s:9:"namespace";N;s:13:"locatedSource";a:2:{s:5:"class";s:68:"PHPStan\BetterReflection\SourceLocator\Located\InternalLocatedSource";s:4:"data";a:4:{s:4:"name";s:11:"is_callable";s:8:"filename";s:39:"phpstorm-stubs:standard/standard_5.stub";s:13:"extensionName";s:8:"standard";s:9:"aliasName";N;}}}}

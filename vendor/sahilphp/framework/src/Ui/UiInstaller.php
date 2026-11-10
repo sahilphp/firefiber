@@ -128,7 +128,7 @@ final class UiInstaller
                 throw new ProcessFailureException(
                     sprintf(
                         "Dependency installation failed (%s exited %d).\n%s\n"
-                        .'Files were generated; fix the package manager error and run `bin/sahil ui:build`.',
+                        .'Files were generated; fix the package manager error and run `php sahil ui:build`.',
                         $result->describe(),
                         $result->exitCode,
                         $this->tail($details),
@@ -304,9 +304,9 @@ final class UiInstaller
             'generated_at' => gmdate(DATE_ATOM),
             'files' => array_keys($plan->files),
             'commands' => [
-                'dev' => 'bin/sahil ui:dev',
-                'build' => 'bin/sahil ui:build',
-                'status' => 'bin/sahil ui:status',
+                'dev' => 'php sahil ui:dev',
+                'build' => 'php sahil ui:build',
+                'status' => 'php sahil ui:status',
             ],
         ];
 

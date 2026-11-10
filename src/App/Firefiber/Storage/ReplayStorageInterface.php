@@ -39,7 +39,7 @@ interface ReplayStorageInterface
         string $fingerprint,
         string $ownerId,
         int $maxAgeSeconds = 300,
-    ): string|false;
+    ): string;
 
     /** Check if a request has already been completed.
      *  @param string $requestId Unique request identifier

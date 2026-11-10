@@ -52,6 +52,14 @@ final class AssetManager implements AssetManagerContract
             'source' => 'resources/js/bootstrap.js',
             'output' => 'assets/bootstrap.js',
         ],
+        // The UI-kit entry point is independent of the CSS profile. React,
+        // Vue, Svelte and the native Sahil Engine all use this module, while
+        // Bootstrap additionally loads its own data-api bundle.
+        'kit' => [
+            'profiles' => [Profile::Tailwind, Profile::Bootstrap, Profile::Both, Profile::None],
+            'source' => 'resources/js/app.js',
+            'output' => 'assets/kit.js',
+        ],
     ];
 
     private readonly string $basePath;
@@ -198,7 +206,7 @@ final class AssetManager implements AssetManagerContract
         if ($profile === null) {
             throw new AssetException(
                 'No UI profile is configured or could be inferred. '
-                .'Run `bin/sahil ui:install tailwind|bootstrap|both|none`, '
+                .'Run `php sahil ui:install tailwind|bootstrap|both|none`, '
                 .'or set ASSET_PROFILE explicitly.',
             );
         }
@@ -268,7 +276,7 @@ final class AssetManager implements AssetManagerContract
 
         if ($this->verify && !is_file($file)) {
             throw new AssetException(sprintf(
-                'Missing production asset [%s/%s]. Run `bin/sahil ui:build` before serving production requests.',
+                'Missing production asset [%s/%s]. Run `php sahil ui:build` before serving production requests.',
                 $this->buildPath,
                 $output,
             ));

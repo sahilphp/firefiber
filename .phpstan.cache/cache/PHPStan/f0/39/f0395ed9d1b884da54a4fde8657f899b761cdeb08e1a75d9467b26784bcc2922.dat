@@ -1,0 +1,143 @@
+O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:80:"v3-6.75.0.4-8.2-3920b2c8731484a65f26018bf8d34e1b52e1c8a2774ec8ad0bef218db18ea4a8";s:4:"data";a:22:{s:13:"locatedSource";a:2:{s:5:"class";s:60:"PHPStan\BetterReflection\SourceLocator\Located\LocatedSource";s:4:"data";a:2:{s:4:"name";s:25:"Sahil\Firefiber\Component";s:8:"filename";s:66:"/home/jinx/Devs/sahilphp/firefiber/src/App/Firefiber/Component.php";}}s:9:"namespace";s:15:"Sahil\Firefiber";s:4:"name";s:25:"Sahil\Firefiber\Component";s:9:"shortName";s:9:"Component";s:11:"isInterface";b:0;s:7:"isTrait";b:0;s:6:"isEnum";b:0;s:12:"isBackedEnum";b:0;s:9:"modifiers";i:64;s:10:"docComment";s:298:"/**
+ * Base class for Firefiber components.
+ *
+ * Components are the fundamental reactive units in Firefiber. Each component
+ * manages its own state and handles actions received from the browser.
+ *
+ * @template TState of array{
+ *     [string, mixed]
+ * }
+ *
+ * @extends ComponentBase<TState>
+ */";s:10:"attributes";a:0:{}s:9:"startLine";i:25;s:7:"endLine";i:295;s:11:"startColumn";i:1;s:9:"endColumn";i:1;s:15:"parentClassName";N;s:20:"implementsClassNames";a:0:{}s:15:"traitClassNames";a:0:{}s:18:"immediateConstants";a:2:{s:15:"COMPONENT_CLASS";a:12:{s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:4:"name";s:15:"COMPONENT_CLASS";s:9:"modifiers";i:1;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:5:"value";a:2:{s:4:"code";s:21:"'firefiber-component'";s:10:"attributes";a:6:{s:9:"startLine";i:28;s:7:"endLine";i:28;s:13:"startTokenPos";i:62;s:12:"startFilePos";i:693;s:11:"endTokenPos";i:62;s:10:"endFilePos";i:713;}}s:10:"docComment";s:26:"/** @used-by subclasses */";s:10:"attributes";a:0:{}s:9:"startLine";i:28;s:7:"endLine";i:28;s:11:"startColumn";i:5;s:9:"endColumn";i:64;}s:12:"MODEL_ACTION";a:12:{s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:4:"name";s:12:"MODEL_ACTION";s:9:"modifiers";i:1;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:5:"value";a:2:{s:4:"code";s:13:"'updateModel'";s:10:"attributes";a:6:{s:9:"startLine";i:31;s:7:"endLine";i:31;s:13:"startTokenPos";i:77;s:12:"startFilePos";i:832;s:11:"endTokenPos";i:77;s:10:"endFilePos";i:844;}}s:10:"docComment";s:71:"/** Action name used by the browser runtime's fiber:model directive. */";s:10:"attributes";a:0:{}s:9:"startLine";i:31;s:7:"endLine";i:31;s:11:"startColumn";i:5;s:9:"endColumn";i:53;}}s:19:"immediateProperties";a:4:{s:2:"id";a:16:{s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:4:"name";s:2:"id";s:9:"modifiers";i:2;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:7:"default";N;s:10:"docComment";s:229:"/**
+ * Unique component identifier.
+ *
+ * This ID is generated server-side and transmitted to the browser in the
+ * initial component snapshot. It is used to identify the component in
+ * subsequent requests.
+ *
+ * @var string
+ */";s:10:"attributes";a:0:{}s:9:"startLine";i:42;s:7:"endLine";i:42;s:11:"startColumn";i:5;s:9:"endColumn";i:25;s:10:"isPromoted";b:0;s:21:"declaredAtCompileTime";b:1;s:16:"immediateVirtual";b:0;s:14:"immediateHooks";a:0:{}}s:5:"state";a:16:{s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:4:"name";s:5:"state";s:9:"modifiers";i:2;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:7:"default";a:2:{s:4:"code";s:2:"[]";s:10:"attributes";a:6:{s:9:"startLine";i:52;s:7:"endLine";i:52;s:13:"startTokenPos";i:99;s:12:"startFilePos";i:1410;s:11:"endTokenPos";i:100;s:10:"endFilePos";i:1411;}}s:10:"docComment";s:207:"/**
+ * Current component state.
+ *
+ * State is serialized and transmitted to the browser in the initial
+ * snapshot. Subsequent updates only transmit the changed portions.
+ *
+ * @var array<string, mixed>
+ */";s:10:"attributes";a:0:{}s:9:"startLine";i:52;s:7:"endLine";i:52;s:11:"startColumn";i:5;s:9:"endColumn";i:32;s:10:"isPromoted";b:0;s:21:"declaredAtCompileTime";b:1;s:16:"immediateVirtual";b:0;s:14:"immediateHooks";a:0:{}}s:7:"actions";a:16:{s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:4:"name";s:7:"actions";s:9:"modifiers";i:2;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:7:"default";a:2:{s:4:"code";s:2:"[]";s:10:"attributes";a:6:{s:9:"startLine";i:62;s:7:"endLine";i:62;s:13:"startTokenPos";i:113;s:12:"startFilePos";i:1690;s:11:"endTokenPos";i:114;s:10:"endFilePos";i:1691;}}s:10:"docComment";s:211:"/**
+ * List of actions this component can handle.
+ *
+ * Actions are identified by string names and mapped to callable handlers.
+ * Only listed actions may be invoked from the browser.
+ *
+ * @var list<string>
+ */";s:10:"attributes";a:0:{}s:9:"startLine";i:62;s:7:"endLine";i:62;s:11:"startColumn";i:5;s:9:"endColumn";i:34;s:10:"isPromoted";b:0;s:21:"declaredAtCompileTime";b:1;s:16:"immediateVirtual";b:0;s:14:"immediateHooks";a:0:{}}s:9:"modelable";a:16:{s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:4:"name";s:9:"modelable";s:9:"modifiers";i:2;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:7:"default";a:2:{s:4:"code";s:2:"[]";s:10:"attributes";a:6:{s:9:"startLine";i:72;s:7:"endLine";i:72;s:13:"startTokenPos";i:127;s:12:"startFilePos";i:1990;s:11:"endTokenPos";i:128;s:10:"endFilePos";i:1991;}}s:10:"docComment";s:229:"/**
+ * State keys that fiber:model is allowed to update.
+ *
+ * This is an explicit allow-list: browser input can only ever write the
+ * keys declared here, never protected properties or internal state.
+ *
+ * @var list<string>
+ */";s:10:"attributes";a:0:{}s:9:"startLine";i:72;s:7:"endLine";i:72;s:11:"startColumn";i:5;s:9:"endColumn";i:36;s:10:"isPromoted";b:0;s:21:"declaredAtCompileTime";b:1;s:16:"immediateVirtual";b:0;s:14:"immediateHooks";a:0:{}}}s:16:"immediateMethods";a:13:{s:11:"__construct";a:20:{s:4:"name";s:11:"__construct";s:10:"parameters";a:2:{s:12:"initialState";a:14:{s:4:"name";s:12:"initialState";s:7:"default";a:2:{s:4:"code";s:2:"[]";s:10:"attributes";a:6:{s:9:"startLine";i:83;s:7:"endLine";i:83;s:13:"startTokenPos";i:146;s:12:"startFilePos";i:2352;s:11:"endTokenPos";i:147;s:10:"endFilePos";i:2353;}}s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:83;s:7:"endLine";i:83;s:11:"startColumn";i:9;s:9:"endColumn";i:32;s:14:"parameterIndex";i:0;s:10:"isOptional";b:1;}s:7:"actions";a:14:{s:4:"name";s:7:"actions";s:7:"default";a:2:{s:4:"code";s:2:"[]";s:10:"attributes";a:6:{s:9:"startLine";i:84;s:7:"endLine";i:84;s:13:"startTokenPos";i:156;s:12:"startFilePos";i:2381;s:11:"endTokenPos";i:157;s:10:"endFilePos";i:2382;}}s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:84;s:7:"endLine";i:84;s:11:"startColumn";i:9;s:9:"endColumn";i:27;s:14:"parameterIndex";i:1;s:10:"isOptional";b:1;}}s:16:"returnsReference";b:0;s:10:"returnType";N;s:10:"attributes";a:0:{}s:10:"docComment";s:261:"/**
+ * Create a new component instance.
+ *
+ * The component ID is automatically generated if not provided.
+ *
+ * @param array<string, mixed> $initialState Initial component state
+ * @param list<string> $actions List of action names this component can handle
+ */";s:9:"startLine";i:82;s:7:"endLine";i:89;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:10:"generateId";a:20:{s:4:"name";s:10:"generateId";s:10:"parameters";a:0:{}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:63:"/**
+ * Generate a unique component ID.
+ *
+ * @return string
+ */";s:9:"startLine";i:96;s:7:"endLine";i:99;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:2;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:2:"id";a:20:{s:4:"name";s:2:"id";s:10:"parameters";a:0:{}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:61:"/**
+ * Get the component identifier.
+ *
+ * @return string
+ */";s:9:"startLine";i:106;s:7:"endLine";i:109;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:5:"state";a:20:{s:4:"name";s:5:"state";s:10:"parameters";a:0:{}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:78:"/**
+ * Get the current component state.
+ *
+ * @return array<string, mixed>
+ */";s:9:"startLine";i:116;s:7:"endLine";i:119;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:7:"hydrate";a:20:{s:4:"name";s:7:"hydrate";s:10:"parameters";a:2:{s:2:"id";a:14:{s:4:"name";s:2:"id";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:132;s:7:"endLine";i:132;s:11:"startColumn";i:29;s:9:"endColumn";i:38;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}s:5:"state";a:14:{s:4:"name";s:5:"state";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:132;s:7:"endLine";i:132;s:11:"startColumn";i:41;s:9:"endColumn";i:52;s:14:"parameterIndex";i:1;s:10:"isOptional";b:0;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"static";s:12:"isIdentifier";b:0;}}s:10:"attributes";a:0:{}s:10:"docComment";s:356:"/**
+ * Hydrate this component from authoritative server-side state.
+ *
+ * This is intentionally separate from the constructor: browser-provided
+ * state must never be able to choose the component ID or replace stored
+ * state directly.
+ *
+ * @param array<string, mixed> $state
+ *
+ * @throws InvalidStateException When the stored component ID is invalid
+ */";s:9:"startLine";i:132;s:7:"endLine";i:142;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:1;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:11:"updateState";a:20:{s:4:"name";s:11:"updateState";s:10:"parameters";a:1:{s:8:"newState";a:14:{s:4:"name";s:8:"newState";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:155;s:7:"endLine";i:155;s:11:"startColumn";i:33;s:9:"endColumn";i:47;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"static";s:12:"isIdentifier";b:0;}}s:10:"attributes";a:0:{}s:10:"docComment";s:309:"/**
+ * Update component state.
+ *
+ * Only keys present in $newState are updated; the rest of the state is
+ * preserved. This method is called server-side before serializing the
+ * state for transmission to the browser.
+ *
+ * @param array<string, mixed> $newState The new state to merge
+ *
+ * @return $this
+ */";s:9:"startLine";i:155;s:7:"endLine";i:160;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:14:"registerAction";a:20:{s:4:"name";s:14:"registerAction";s:10:"parameters";a:2:{s:6:"action";a:14:{s:4:"name";s:6:"action";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:173;s:7:"endLine";i:173;s:11:"startColumn";i:36;s:9:"endColumn";i:49;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}s:7:"handler";a:14:{s:4:"name";s:7:"handler";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:8:"callable";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:173;s:7:"endLine";i:173;s:11:"startColumn";i:52;s:9:"endColumn";i:68;s:14:"parameterIndex";i:1;s:10:"isOptional";b:0;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"static";s:12:"isIdentifier";b:0;}}s:10:"attributes";a:0:{}s:10:"docComment";s:353:"/**
+ * Register an action handler.
+ *
+ * Only actions registered via this method may be invoked from the browser.
+ * This is a security measure to prevent unauthorized action execution.
+ *
+ * @param string $action The action name
+ * @param callable $handler The handler callable. Signature: function(array $payload): array|string
+ *
+ * @return $this
+ */";s:9:"startLine";i:173;s:7:"endLine";i:178;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:12:"handleAction";a:20:{s:4:"name";s:12:"handleAction";s:10:"parameters";a:2:{s:6:"action";a:14:{s:4:"name";s:6:"action";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:194;s:7:"endLine";i:194;s:11:"startColumn";i:43;s:9:"endColumn";i:56;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}s:7:"payload";a:14:{s:4:"name";s:7:"payload";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:194;s:7:"endLine";i:194;s:11:"startColumn";i:59;s:9:"endColumn";i:72;s:14:"parameterIndex";i:1;s:10:"isOptional";b:0;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:557:"/**
+ * Handle an action received from the browser.
+ *
+ * The default implementation throws an exception. Subclasses should
+ * override this method or register action handlers via registerAction().
+ *
+ * @param string $action The action name
+ * @param array $payload The action payload from the browser
+ *
+ * @return array{status: string, payload: array} Response data
+ *
+ * @throws \Sahil\Firefiber\Exceptions\UnknownActionException When the action is not registered
+ * @throws \Sahil\Firefiber\Exceptions\InvalidStateException When the state is invalid
+ */";s:9:"startLine";i:194;s:7:"endLine";i:194;s:11:"startColumn";i:5;s:9:"endColumn";i:81;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:65;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:11:"updateModel";a:20:{s:4:"name";s:11:"updateModel";s:10:"parameters";a:1:{s:7:"payload";a:14:{s:4:"name";s:7:"payload";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:212;s:7:"endLine";i:212;s:11:"startColumn";i:39;s:9:"endColumn";i:52;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:679:"/**
+ * Apply a fiber:model update to the component state.
+ *
+ * Only keys declared in $modelable may be written. Every value is passed
+ * through validateModelValue() before any state changes, so a rejected
+ * payload leaves the component untouched. The method is final so a
+ * subclass cannot widen this write path or redirect it to another method.
+ *
+ * @param array<string, mixed> $payload Field name => submitted value
+ *
+ * @return array{updated: array<string, mixed>}
+ *
+ * @throws UnknownActionException When a field is not model-bindable
+ * @throws InvalidStateException When the payload is empty
+ * @throws ValidationException When a submitted value fails validation
+ */";s:9:"startLine";i:212;s:7:"endLine";i:238;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:1;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:33;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:18:"validateModelValue";a:20:{s:4:"name";s:18:"validateModelValue";s:10:"parameters";a:2:{s:5:"field";a:14:{s:4:"name";s:5:"field";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:246;s:7:"endLine";i:246;s:11:"startColumn";i:43;s:9:"endColumn";i:55;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}s:5:"value";a:14:{s:4:"name";s:5:"value";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"mixed";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:246;s:7:"endLine";i:246;s:11:"startColumn";i:58;s:9:"endColumn";i:69;s:14:"parameterIndex";i:1;s:10:"isOptional";b:0;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:4:"void";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:189:"/**
+ * Validate one submitted model value before it is applied.
+ *
+ * Subclasses override this hook to apply their existing validation rules
+ * and throw ValidationException on failure.
+ */";s:9:"startLine";i:246;s:7:"endLine";i:248;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:2;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:14:"serializeState";a:20:{s:4:"name";s:14:"serializeState";s:10:"parameters";a:0:{}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:388:"/**
+ * Serialize component state for transmission to the browser.
+ *
+ * This method produces a JSON-safe representation of the component state.
+ * Subclasses may override to customize serialization, but must ensure
+ * that only JSON-serializable values are included.
+ *
+ * @return array{id: string, state: array}
+ *
+ * @throws JsonException When state contains non-serializable values
+ */";s:9:"startLine";i:261;s:7:"endLine";i:272;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:17:"registeredActions";a:20:{s:4:"name";s:17:"registeredActions";s:10:"parameters";a:0:{}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:5:"array";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:78:"/**
+ * Get the list of registered action names.
+ *
+ * @return list<string>
+ */";s:9:"startLine";i:279;s:7:"endLine";i:282;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:1;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}s:18:"isActionRegistered";a:20:{s:4:"name";s:18:"isActionRegistered";s:10:"parameters";a:1:{s:6:"action";a:14:{s:4:"name";s:6:"action";s:7:"default";N;s:4:"type";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:6:"string";s:12:"isIdentifier";b:1;}}s:10:"isVariadic";b:0;s:5:"byRef";b:0;s:10:"isPromoted";b:0;s:10:"docComment";N;s:10:"attributes";a:0:{}s:9:"startLine";i:291;s:7:"endLine";i:291;s:11:"startColumn";i:43;s:9:"endColumn";i:56;s:14:"parameterIndex";i:0;s:10:"isOptional";b:0;}}s:16:"returnsReference";b:0;s:10:"returnType";a:2:{s:5:"class";s:55:"PHPStan\BetterReflection\Reflection\ReflectionNamedType";s:4:"data";a:2:{s:4:"name";s:4:"bool";s:12:"isIdentifier";b:1;}}s:10:"attributes";a:0:{}s:10:"docComment";s:133:"/**
+ * Validate that a submitted action is registered.
+ *
+ * @param string $action The action name to validate
+ *
+ * @return bool
+ */";s:9:"startLine";i:291;s:7:"endLine";i:294;s:11:"startColumn";i:5;s:9:"endColumn";i:5;s:10:"couldThrow";b:0;s:9:"isClosure";b:0;s:11:"isGenerator";b:0;s:10:"isVariadic";b:0;s:9:"modifiers";i:2;s:9:"namespace";s:15:"Sahil\Firefiber";s:18:"declaringClassName";s:25:"Sahil\Firefiber\Component";s:21:"implementingClassName";s:25:"Sahil\Firefiber\Component";s:16:"currentClassName";s:25:"Sahil\Firefiber\Component";s:9:"aliasName";N;}}s:10:"traitsData";a:4:{s:7:"aliases";a:0:{}s:9:"modifiers";a:0:{}s:11:"precedences";a:0:{}s:6:"hashes";a:0:{}}}}

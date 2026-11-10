@@ -306,7 +306,18 @@ final class RenderContext
         return $this->assetManager()->developmentClient();
     }
 
-    private function assetManager(): AssetManagerContract
+    public function csrfField(): string {        
+    $app = $this->engine->app();     
+    if ($app === null) {           
+        throw new ViewRenderException('CSRF field requires an application context with a session.');
+        }
+        
+        $session = $app->container()->get(Sahil\Contracts\Session\SessionContract::class);
+        
+        return '<input type="hidden" name="_token" value="' . $session->token() . '"/>';
+     }
+     
+     private function assetManager(): AssetManagerContract
     {
         if ($this->assets === null) {
             throw new ViewRenderException(

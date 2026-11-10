@@ -192,6 +192,43 @@ test('fiber:click dispatches exactly one valid action request only after a click
     assert.equal(fetch.calls.length, 1, 'A single click must produce exactly one request');
 });
 
+test('fiber:click sends the component class and updates bound state after success', async () => {
+    const runtime = loadRuntime();
+    const document = new FakeDocument();
+    const root = document.createElement('div');
+    const output = document.createElement('span');
+    const button = document.createElement('button');
+
+    output.textContent = '1';
+    output.setAttribute('data-firefiber-bind', 'count');
+    button.setAttribute('fiber:click', 'increment');
+    root.setAttribute('data-firefiber-component', COMPONENT_ID);
+    root.setAttribute('data-firefiber-component-name', 'App\\Firefiber\\Components\\Counter');
+    root.setAttribute('data-firefiber-snapshot', JSON.stringify(makeSnapshot()));
+    root.append(output, button);
+    document.body.append(root);
+
+    const fetch = captureFetch(() => responseFor(successPayload()));
+    runtime.configure({
+        endpoint: ENDPOINT,
+        csrfToken: CSRF_TOKEN,
+        hmacKey: HMAC_KEY,
+        protocolVersion: '3.1',
+        fetch,
+    });
+    boot(runtime, document);
+
+    const success = waitForEvent(button, 'firefiber:success');
+    dispatchClick(button);
+    await success;
+
+    const body = JSON.parse(fetch.calls[0].options.body);
+    assert.equal(body.componentName, 'App\\Firefiber\\Components\\Counter');
+    assert.equal(body.componentClass, 'App\\Firefiber\\Components\\Counter');
+    assert.equal(String(output.textContent), '2');
+    assert.equal(JSON.parse(root.getAttribute('data-firefiber-snapshot')).state.count, 2);
+});
+
 test('fiber:click suppresses duplicate submissions while the same action is pending', async () => {
     let resolveFetch;
     let markFetchStarted;
@@ -389,4 +426,66 @@ test('fiber:click preserves third-party click handlers and default behavior', as
     assert.equal(eventState.prevented, 0);
     assert.equal(eventState.stopped, 0);
     assert.equal(fetch.calls.length, 1);
+});
+
+test('structured state never replaces server-rendered markup with JSON', async () => {
+    const record = {
+        id: 'abc',
+        componentId: COMPONENT_ID,
+        field: 'document',
+        disk: 'local',
+        path: 'firefiber/uploads/abc/abc.txt',
+        storedName: 'abc.txt',
+        originalName: 'notes.txt',
+        mimeType: 'text/plain',
+        extension: 'txt',
+        size: 128,
+        promoted: false,
+    };
+
+    const { document, root, button } = setup({
+        fetch: captureFetch(() => responseFor({
+            status: 'ok',
+            componentId: COMPONENT_ID,
+            action: 'increment',
+            result: { count: 2 },
+            snapshot: {
+                componentId: COMPONENT_ID,
+                state: { count: 2, uploads: [record] },
+                timestamp: Math.floor(Date.now() / 1000),
+                protocolVersion: '3.1',
+                signature: 'fresh-snapshot',
+            },
+        })),
+    });
+
+    // Server-rendered markup for the collection, next to a plain scalar bind.
+    const list = document.createElement('ul');
+    list.setAttribute('data-firefiber-bind', 'uploads');
+    const item = document.createElement('li');
+    item.setAttribute('data-upload-id', 'abc');
+    item.textContent = 'notes.txt';
+    list.append(item);
+    root.append(list);
+
+    const scalar = document.createElement('span');
+    scalar.setAttribute('data-firefiber-bind', 'count');
+    scalar.textContent = '1';
+    root.append(scalar);
+
+    const success = waitForEvent(button, 'firefiber:success');
+    dispatchClick(button);
+    await success;
+
+    // The collection keeps its own markup: a snapshot application must not
+    // write the array's JSON into the element and destroy its children.
+    assert.equal(list.children.length, 1, 'collection markup survives snapshot application');
+    assert.equal(list.children[0], item, 'the server-rendered item is untouched');
+
+    const dumped = typeof list.textContent === 'string' ? list.textContent : '';
+    assert.equal(dumped.includes('storedName'), false, 'internal record fields must not reach the page');
+    assert.equal(dumped.includes('firefiber/uploads'), false, 'storage paths must not reach the page');
+
+    // Scalars from the same snapshot still bind normally.
+    assert.equal(scalar.textContent, '2');
 });

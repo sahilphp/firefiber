@@ -56,7 +56,7 @@ final class ThemeInstaller
             if (!is_file($basePath.'/'.$entry)) {
                 throw new ThemeException(sprintf(
                     'Cannot add theme imports to [%s] because the file does not exist. '
-                    .'Run `bin/sahil ui:install %s` first.',
+                    .'Run `php sahil ui:install %s` first.',
                     $entry,
                     $profile->value,
                 ));

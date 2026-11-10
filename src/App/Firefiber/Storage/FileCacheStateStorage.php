@@ -96,7 +96,7 @@ final class FileCacheStateStorage implements StateStorageInterface
     {
         $data = $this->readRecord($componentId);
 
-        if ($data === null || !isset($data['ttl'])) {
+        if ($data === null) {
             return false;
         }
 
@@ -112,7 +112,7 @@ final class FileCacheStateStorage implements StateStorageInterface
     {
         $data = $this->readRecord($componentId);
 
-        if ($data === null || !isset($data['last_modified'])) {
+        if ($data === null) {
             return false;
         }
 

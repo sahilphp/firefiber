@@ -1,0 +1,10 @@
+parameters:
+    level: 2
+    paths:
+        - src
+    excludePaths:
+        - src/FirefiberMiddleware*.php
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false
+    bootstrapFiles:
+        - stubs/psr-http.stub

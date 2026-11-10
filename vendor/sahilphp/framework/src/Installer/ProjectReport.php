@@ -82,6 +82,18 @@ final class ProjectReport
         $lines[] = '  php sahil about';
         $lines[] = '  php sahil ui:build';
         $lines[] = '  php sahil start';
+        $lines[] = '  composer start';
+        $lines[] = '';
+        $lines[] = sprintf('UI profile: %s (%s)', $this->uiProfile->label(), $this->uiProfile->value);
+        $lines[] = '  http://127.0.0.1:8000/          welcome page';
+        $lines[] = '  http://127.0.0.1:8000/ui-kit    component gallery';
+        $lines[] = '  http://127.0.0.1:8000/health    health check';
+        $lines[] = '';
+        $lines[] = 'Generate the complete authentication implementation, then open it:';
+        $lines[] = '  php sahil unda:auth';
+        $lines[] = '  http://127.0.0.1:8000/login';
+        $lines[] = '  http://127.0.0.1:8000/register';
+        $lines[] = '  http://127.0.0.1:8000/dashboard';
 
         return $lines;
     }

@@ -1,0 +1,37 @@
+<?php
+namespace Psr\Http\Message {
+    interface ResponseInterface {
+        public function getStatusCode(): int;
+        public function getBody(): mixed;
+        public function getHeaders(): array;
+    }
+    interface StreamInterface {
+        public function __toString(): string;
+    }
+    interface ServerRequestInterface {
+        public function getHeaderLine(string $name): string;
+        public function getBody(): StreamInterface;
+        public function getParsedBody(): mixed;
+        public function getMethod(): string;
+        public function getUri(): \Psr\Http\Message\UriInterface;
+    }
+    interface UriInterface {
+        public function __toString(): string;
+    }
+}
+namespace Psr\Http\Server {
+    interface RequestHandlerInterface {
+        public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface;
+    }
+}
+namespace Slim\Psr7 {
+    class Response {
+        public function __construct(int $status = 200, array $headers = [], $body = null) {}
+        public function getStatusCode(): int { return 200; }
+        public function getHeaders(): array { return []; }
+        public function getBody(): mixed { return null; }
+        public function status(): int { return 200; }
+        public function headers(): array { return []; }
+        public function body(): string { return ''; }
+    }
+}

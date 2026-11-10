@@ -12,6 +12,8 @@
 /node_modules export-ignore
 /docs export-ignore
 /composer.lock export-ignore
+/.phpstan.cache export-ignore
+/.php-cs-fixer.cache export-ignore
 /phpunit.xml export-ignore
 /phpunit.xml.dist export-ignore
 

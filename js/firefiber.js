@@ -67,6 +67,10 @@
     var CLICK_MODIFIERS = ['prevent', 'stop', 'once', 'self'];
     var MODEL_EVENTS = ['input', 'change'];
     var DEFAULT_MODEL_ACTION = 'updateModel';
+    // Built-in actions the browser runtime may issue without a developer
+    // registration; the server treats each as a fixed, allow-listed entry
+    // point (never an arbitrary method call).
+    var QUERY_ACTION = 'firefiberQuery';
     var DEFAULT_CONFIRM_MESSAGE = 'Are you sure?';
     var KEYBOARD_MODIFIERS = ['ctrl', 'alt', 'shift', 'meta'];
     var KEYBOARD_FILTERS = ['prevent', 'stop', 'once', 'self'];
@@ -123,6 +127,18 @@
     // element -> list of target action names (from fiber:target).
     var loadingTargets = new WeakMap();
     var navigationLoadingCount = 0;
+    // Advanced capabilities (URL sync, polling, lazy, optimistic, uploads),
+    // keyed by component root element.
+    var advancedComponents = new Map();
+    var urlSyncRecords = new Set();
+    var urlPopstateListener = null;
+    // Monotonic per-component request/response ordering. Older responses can
+    // never overwrite newer authoritative state.
+    var actionSequences = new Map();
+    var appliedSequences = new Map();
+    // Debounced fiber:model timers, cleared on stop and element disposal.
+    var debounceTimers = new Map();
+    var PUSH_SETTLE_MS = 700;
 
     var state = {
         booted: false,
@@ -135,6 +151,8 @@
         config: {
             endpoint: null,
             csrfToken: null,
+            // Legacy optional transport-integrity key. Pages do not render
+            // signing secrets, and requests do not require this value.
             hmacKey: null,
             componentId: null,
             snapshot: null,
@@ -487,6 +505,12 @@
             'data-component-id',
         ]);
         var attributeSnapshot = normalizeSnapshot(findAttributeValue(element, ['data-firefiber-snapshot']));
+        var componentName = findAttributeValue(element, [
+            'data-firefiber-component-name',
+            'data-firefiber-class',
+            'data-firefiber-name',
+        ]) || (attributeSnapshot && (attributeSnapshot.componentName || attributeSnapshot.componentClass))
+            || configValue('componentName') || configValue('componentClass');
         var configuredComponentId = configValue('componentId');
         var configuredSnapshot = normalizeSnapshot(configValue('snapshot'));
         var componentId = attributeComponentId
@@ -545,6 +569,7 @@
 
         return {
             componentId: componentId,
+            componentName: componentName || null,
             snapshot: snapshot,
             csrfToken: csrfToken,
             endpoint: endpoint,
@@ -553,7 +578,7 @@
             protocolVersion: String(protocolVersion),
             headers: headers,
             credentials: configValue('credentials') || 'same-origin',
-            fetch: state.config.fetch || (global && global.fetch) || (root && root.fetch) || null,
+            fetch: state.config.fetch || (global && global.fetch) || (root && typeof root.fetch === 'function' ? root.fetch.bind(root) : null),
             crypto: state.config.crypto || (global && global.crypto) || (root && root.crypto) || null,
             signBody: state.config.signBody || (global && global.signBody) || null,
         };
@@ -578,6 +603,243 @@
         }
 
         snapshots.set(componentId, snapshot);
+    }
+
+    function findComponentRoot(componentId) {
+        var document = state.document || (root && root.document) || null;
+
+        if (!document || typeof document.querySelectorAll !== 'function') {
+            return null;
+        }
+
+        var candidates;
+        try {
+            candidates = document.querySelectorAll('[data-firefiber-component]');
+        } catch (error) {
+            candidates = [];
+        }
+
+        if (!candidates || candidates.length === 0) {
+            try {
+                candidates = document.querySelectorAll('*');
+            } catch (fallbackError) {
+                return null;
+            }
+        }
+
+        for (var index = 0; index < candidates.length; index++) {
+            var element = candidates[index];
+
+            if (element && typeof element.getAttribute === 'function'
+                && element.getAttribute('data-firefiber-component') === componentId) {
+                return element;
+            }
+        }
+
+        return null;
+    }
+
+    function bindValueToString(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        if (typeof value === 'object') {
+            try {
+                return JSON.stringify(value);
+            } catch (error) {
+                return '';
+            }
+        }
+
+        return String(value);
+    }
+
+    function belongsToComponentRoot(element, componentRoot) {
+        var cursor = element;
+
+        while (cursor) {
+            if (cursor === componentRoot) {
+                return true;
+            }
+
+            if (
+                cursor !== componentRoot
+                && typeof cursor.getAttribute === 'function'
+                && cursor.getAttribute('data-firefiber-component')
+            ) {
+                return false;
+            }
+
+            cursor = cursor.parentNode || cursor.parentElement || null;
+        }
+
+        return false;
+    }
+
+    function applySnapshotToDom(componentId, snapshot, skipRootAttribute) {
+        if (!snapshot || !snapshot.state || typeof snapshot.state !== 'object' || Array.isArray(snapshot.state)) {
+            return;
+        }
+
+        var componentRoot = findComponentRoot(componentId);
+
+        if (!componentRoot) {
+            return;
+        }
+
+        // Optimistic patches update bound values only: the signed snapshot
+        // attribute must always carry server-authoritative state.
+        if (!skipRootAttribute && typeof componentRoot.setAttribute === 'function') {
+            componentRoot.setAttribute('data-firefiber-snapshot', JSON.stringify(snapshot));
+        }
+
+        if (typeof componentRoot.querySelectorAll !== 'function') {
+            return;
+        }
+
+        var fields;
+        try {
+            fields = componentRoot.querySelectorAll('[data-firefiber-bind]');
+        } catch (error) {
+            fields = [];
+        }
+
+        if (!fields || fields.length === 0) {
+            try {
+                fields = componentRoot.querySelectorAll('*');
+            } catch (fallbackError) {
+                return;
+            }
+        }
+
+        for (var index = 0; index < fields.length; index++) {
+            var fieldElement = fields[index];
+
+            if (!fieldElement || typeof fieldElement.getAttribute !== 'function') {
+                continue;
+            }
+
+            var field = fieldElement.getAttribute('data-firefiber-bind');
+
+            if (!field || !Object.prototype.hasOwnProperty.call(snapshot.state, field)) {
+                continue;
+            }
+
+            if (!belongsToComponentRoot(fieldElement, componentRoot)) {
+                continue;
+            }
+
+            var value = snapshot.state[field];
+            var tag = String(fieldElement.tagName || '').toUpperCase();
+            var inputType = '';
+
+            if (typeof fieldElement.getAttribute === 'function') {
+                inputType = String(fieldElement.getAttribute('type') || '').toLowerCase();
+            }
+
+            if (inputType === 'checkbox' || inputType === 'radio') {
+                if ('checked' in fieldElement) {
+                    fieldElement.checked = Boolean(value);
+                }
+            } else if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+                if ('value' in fieldElement) {
+                    fieldElement.value = bindValueToString(value);
+                }
+            } else if (value !== null && typeof value === 'object') {
+                // Collections and objects are rendered as markup by the server
+                // (the staged upload list, for example). Writing their JSON as
+                // text would destroy the element's children — clobbering the
+                // just-applied server markup — and expose internal record
+                // fields such as storage paths in the page. Scalars still
+                // bind normally.
+                continue;
+            } else {
+                fieldElement.textContent = bindValueToString(value);
+            }
+        }
+    }
+
+    function errorMessageText(messages) {
+        if (typeof messages === 'string') {
+            return messages;
+        }
+
+        if (Array.isArray(messages)) {
+            return messages.join('\n');
+        }
+
+        return '';
+    }
+
+    function updateValidationErrorDisplay(errors, componentId) {
+        var document = state.document || (root && root.document) || null;
+
+        if (!document || typeof document.querySelectorAll !== 'function') {
+            return;
+        }
+
+        var componentRoot = componentId ? findComponentRoot(componentId) : null;
+        var sourceElements = componentRoot && typeof componentRoot.querySelectorAll === 'function'
+            ? componentRoot
+            : document;
+        var errorElements;
+        try {
+            errorElements = sourceElements.querySelectorAll('[data-firefiber-error], [fiber\\:error]');
+        } catch (error) {
+            return;
+        }
+
+        if (!errorElements || errorElements.length === 0) {
+            try {
+                errorElements = sourceElements.querySelectorAll('*');
+            } catch (error) {
+                return;
+            }
+        }
+
+        if (!errorElements) {
+            return;
+        }
+
+        var errorMap = errors && typeof errors === 'object' && !Array.isArray(errors)
+            ? errors
+            : {};
+
+        for (var index = 0; index < errorElements.length; index++) {
+            var errorElement = errorElements[index];
+            var field = nonEmptyString(errorElement.getAttribute('data-firefiber-error'))
+                ? errorElement.getAttribute('data-firefiber-error')
+                : errorElement.getAttribute('fiber:error');
+
+            if (!field) {
+                continue;
+            }
+
+            var messages = Object.prototype.hasOwnProperty.call(errorMap, field)
+                ? errorMap[field]
+                : (field === '_form'
+                    ? (errorMap.__form || errorMap._form || null)
+                    : null);
+            if (componentRoot && !belongsToComponentRoot(errorElement, componentRoot)) {
+                continue;
+            }
+
+            var text = errorMessageText(messages);
+
+            errorElement.textContent = text;
+            if (typeof errorElement.setAttribute === 'function') {
+                errorElement.setAttribute('aria-invalid', text === '' ? 'false' : 'true');
+            }
+
+            if (text !== '' && typeof errorElement.setAttribute === 'function') {
+                errorElement.setAttribute('aria-live', 'polite');
+            }
+        }
+    }
+
+    function clearValidationErrors(componentId) {
+        updateValidationErrorDisplay({}, componentId);
     }
 
     function createRequestId() {
@@ -645,7 +907,7 @@
         }
 
         if (!nonEmptyString(config.hmacKey)) {
-            throw new Error('Firefiber request signing key is not configured');
+            return null;
         }
 
         var crypto = config.crypto || (root && root.crypto);
@@ -1690,11 +1952,20 @@
     function setupModelBaseline(context) {
         var field = modelFieldOf(context.element);
 
-        if (field === '') {
-            return;
+        if (field !== '') {
+            ensureDirtyBaseline(loadingScopeOf(context.element), field);
         }
 
-        ensureDirtyBaseline(loadingScopeOf(context.element), field);
+        var element = context.element;
+
+        return function cleanupModel() {
+            var timer = debounceTimers.get(element);
+
+            if (timer !== undefined && timer !== null) {
+                cancelTimer(timer);
+                debounceTimers.delete(element);
+            }
+        };
     }
 
     /**
@@ -1887,14 +2158,59 @@
         return detail;
     }
 
+    function reportModelException(context, error) {
+        reportError(error, context);
+        emitRuntimeEvent(context.element, 'firefiber:error', {
+            action: String(context.value || ''),
+            error: error && error.message ? error.message : String(error),
+            kind: 'exception',
+        });
+    }
+
+    function modelDebounceDelay(element) {
+        if (!element || typeof element.getAttribute !== 'function') {
+            return 0;
+        }
+
+        var raw = element.getAttribute('data-firefiber-debounce');
+
+        if (raw === null || raw === undefined || raw === '') {
+            return 0;
+        }
+
+        var delay = parseInt(raw, 10);
+
+        return isFinite(delay) && delay > 0 ? Math.min(delay, 10000) : 0;
+    }
+
     function handleModel(event, context) {
+        var element = context.element;
+        var delay = modelDebounceDelay(element);
+
+        // Debounced inputs coalesce rapid edits into one server round trip.
+        // The timer lives in a tracked map so stop() can cancel it.
+        if (delay > 0 && element) {
+            var existing = debounceTimers.get(element);
+
+            if (existing !== undefined && existing !== null) {
+                cancelTimer(existing);
+            }
+
+            var timer = scheduleTimer(function () {
+                debounceTimers.delete(element);
+
+                dispatchModelAction(null, context).catch(function (error) {
+                    reportModelException(context, error);
+                });
+            }, delay);
+
+            debounceTimers.set(element, timer);
+
+            return;
+        }
+
         dispatchModelAction(event, context).catch(function (error) {
-            reportError(error, context);
-            emitRuntimeEvent(context.element, 'firefiber:error', {
-                action: String(context.value || ''),
-                error: error && error.message ? error.message : String(error),
-                kind: 'exception',
-            });
+            reportModelException(context, error);
         });
     }
 
@@ -2928,17 +3244,6 @@
             return;
         }
 
-        if (!nonEmptyString(config.hmacKey) && typeof config.signBody !== 'function') {
-            emitRuntimeEvent(element, 'firefiber:error', {
-                action: action,
-                componentId: config.componentId,
-                error: 'Firefiber request signing key is not configured',
-                kind: 'configuration',
-            });
-
-            return;
-        }
-
         if (typeof config.fetch !== 'function') {
             emitRuntimeEvent(element, 'firefiber:error', {
                 action: action,
@@ -2957,9 +3262,61 @@
         }
 
         pendingActions.set(pendingKey, true);
-        beginActionLoading(element, action);
 
         var requestId = createRequestId();
+        var seq = (actionSequences.get(config.componentId) || 0) + 1;
+        actionSequences.set(config.componentId, seq);
+
+        // Opt-in optimistic interaction: patch the DOM immediately, then let
+        // the authoritative response confirm or roll it back.
+        var optimisticMap = optimisticMapFor(config.componentId);
+        var optimisticPatch = optimisticMap
+            && Object.prototype.hasOwnProperty.call(optimisticMap, action)
+            && optimisticMap[action]
+            && typeof optimisticMap[action] === 'object'
+            && !Array.isArray(optimisticMap[action])
+            ? optimisticMap[action]
+            : null;
+        var preActionSnapshot = optimisticPatch
+            ? (snapshots.get(config.componentId) || config.snapshot || null)
+            : null;
+
+        var restoreOptimistic = function () {
+            if (!optimisticPatch) {
+                return;
+            }
+
+            if (seq < (appliedSequences.get(config.componentId) || 0)) {
+                // A newer response already produced fresher authoritative
+                // state; restoring an older snapshot would clobber it.
+                return;
+            }
+
+            if (preActionSnapshot) {
+                applySnapshotToDom(config.componentId, preActionSnapshot);
+            }
+
+            emitRuntimeEvent(element, 'firefiber:rollback', {
+                requestId: requestId,
+                componentId: config.componentId,
+                action: action,
+                snapshot: preActionSnapshot,
+            });
+        };
+
+        if (optimisticPatch) {
+            applyOptimisticState(config.componentId, optimisticPatch);
+            emitRuntimeEvent(element, 'firefiber:optimistic', {
+                requestId: requestId,
+                componentId: config.componentId,
+                action: action,
+                patch: optimisticPatch,
+            });
+        }
+
+        if (!context.silent) {
+            beginActionLoading(element, action);
+        }
 
         try {
             var bodyData = {
@@ -2967,6 +3324,8 @@
                 type: 'handleAction',
                 requestId: requestId,
                 componentId: config.componentId,
+                componentName: config.componentName,
+                componentClass: config.componentName,
                 action: action,
                 payload: payload,
                 csrfToken: config.csrfToken,
@@ -2980,8 +3339,10 @@
                 'Accept': 'application/json',
                 'X-Firefiber-Target': '1',
                 'X-Csrf-Token': config.csrfToken,
-                'X-Firefiber-Signature': signature,
             });
+            if (nonEmptyString(signature)) {
+                headers['X-Firefiber-Signature'] = signature;
+            }
     
             var response = await config.fetch(config.endpoint, {
                 method: 'POST',
@@ -3007,12 +3368,50 @@
             };
 
             if (ok && responsePayload && (responsePayload.status === 'ok' || responsePayload.status === 'success')) {
-                if (
-                    responsePayload.snapshot
-                    && typeof responsePayload.snapshot === 'object'
-                    && !Array.isArray(responsePayload.snapshot)
-                ) {
-                    rememberSnapshot(config.componentId, responsePayload.snapshot);
+                // Out-of-order protection: only the freshest response may
+                // write authoritative state back into the DOM.
+                var newest = seq >= (appliedSequences.get(config.componentId) || 0);
+
+                if (newest) {
+                    appliedSequences.set(config.componentId, seq);
+
+                    // Server-driven markup (lazy loads, polling refreshes and
+                    // opt-in re-renders) replaces the component fragment.
+                    if (typeof responsePayload.html === 'string' && responsePayload.html !== '') {
+                        replaceComponentHtml(config.componentId, responsePayload.html);
+                    }
+
+                    if (
+                        responsePayload.snapshot
+                        && typeof responsePayload.snapshot === 'object'
+                        && !Array.isArray(responsePayload.snapshot)
+                    ) {
+                        rememberSnapshot(config.componentId, responsePayload.snapshot);
+                        applySnapshotToDom(config.componentId, responsePayload.snapshot);
+                    }
+
+                    clearValidationErrors(config.componentId);
+
+                    var parentSnapshots = Array.isArray(responsePayload.parentSnapshots)
+                        ? responsePayload.parentSnapshots
+                        : [];
+                    for (var parentIndex = 0; parentIndex < parentSnapshots.length; parentIndex++) {
+                        var parentSnapshot = parentSnapshots[parentIndex];
+                        if (
+                            parentSnapshot
+                            && typeof parentSnapshot === 'object'
+                            && !Array.isArray(parentSnapshot)
+                            && nonEmptyString(parentSnapshot.componentId)
+                        ) {
+                            rememberSnapshot(parentSnapshot.componentId, parentSnapshot);
+                            applySnapshotToDom(parentSnapshot.componentId, parentSnapshot);
+                            clearValidationErrors(parentSnapshot.componentId);
+                            emitRuntimeEvent(element, 'firefiber:parent-updated', Object.assign({}, detail, {
+                                parentComponentId: parentSnapshot.componentId,
+                                parentSnapshot: parentSnapshot,
+                            }));
+                        }
+                    }
                 }
 
                 // Let the originating directive update its own acknowledgement
@@ -3025,16 +3424,23 @@
                     }
                 }
 
+                if (newest) {
+                    queueUrlSync(config.componentId);
+                }
+
                 emitRuntimeEvent(element, 'firefiber:success', detail);
 
                 return detail;
             }
+
+            restoreOptimistic();
 
             var errorCode = responsePayload && responsePayload.errorCode !== undefined
                 ? Number(responsePayload.errorCode)
                 : null;
 
             if (status === 422 || errorCode === 1 || (responsePayload && responsePayload.errors)) {
+                updateValidationErrorDisplay(responsePayload && responsePayload.errors ? responsePayload.errors : {}, config.componentId);
                 emitRuntimeEvent(element, 'firefiber:validation-error', detail);
             } else if (errorCode === 5) {
                 emitRuntimeEvent(element, 'firefiber:expired', detail);
@@ -3044,6 +3450,8 @@
 
             return detail;
         } catch (error) {
+            restoreOptimistic();
+
             var failure = {
                 requestId: requestId,
                 componentId: config.componentId,
@@ -3061,7 +3469,10 @@
             return failure;
         } finally {
             pendingActions.delete(pendingKey);
-            endActionLoading(element, action);
+
+            if (!context.silent) {
+                endActionLoading(element, action);
+            }
         }
     }
 
@@ -3340,6 +3751,7 @@
 
         if (node.nodeType === 1) {
             cleaned += cleanupElement(node);
+            cleanupAdvancedComponent(node);
         }
 
         if (typeof node.querySelectorAll === 'function') {
@@ -3347,6 +3759,7 @@
 
             for (var index = 0; index < descendants.length; index++) {
                 cleaned += cleanupElement(descendants[index]);
+                cleanupAdvancedComponent(descendants[index]);
             }
         }
 
@@ -3362,6 +3775,7 @@
 
         if (node.nodeType === 1) {
             bound += bindElement(node);
+            setupAdvancedComponent(node);
         }
 
         if (typeof node.querySelectorAll === 'function') {
@@ -3370,6 +3784,7 @@
 
             for (var index = 0; index < descendants.length; index++) {
                 bound += bindElement(descendants[index]);
+                setupAdvancedComponent(descendants[index]);
             }
         }
 
@@ -3496,6 +3911,19 @@
         keydownEvents = new WeakSet();
         dirtyIndicators.clear();
         dirtyBaselines = new WeakMap();
+
+        advancedComponents.forEach(function (record, element) {
+            cleanupAdvancedComponent(element);
+        });
+        advancedComponents.clear();
+        urlSyncRecords.clear();
+        teardownUrlListenersIfEmpty();
+        debounceTimers.forEach(function (timer) {
+            cancelTimer(timer);
+        });
+        debounceTimers.clear();
+        actionSequences.clear();
+        appliedSequences.clear();
         state.observer = null;
         state.document = null;
         state.root = null;
@@ -3504,6 +3932,1201 @@
         state.onError = null;
 
         return wasBooted;
+    }
+
+    // ------------------------------------------------------------------
+    // Advanced component capabilities: URL synchronization, polling, lazy
+    // loading, optimistic interactions and uploads. Every record is keyed
+    // by the component root element and torn down with it.
+    // ------------------------------------------------------------------
+
+    function scheduleTimer(callback, delay) {
+        var timerFn = state.config.setTimeout
+            || (root && typeof root.setTimeout === 'function' ? root.setTimeout.bind(root) : null)
+            || (typeof setTimeout === 'function' ? setTimeout : null);
+
+        if (typeof timerFn !== 'function') {
+            callback();
+            return null;
+        }
+
+        return timerFn(callback, delay);
+    }
+
+    function cancelTimer(timer) {
+        if (timer === null || timer === undefined) {
+            return;
+        }
+
+        var cancelFn = state.config.clearTimeout
+            || (root && typeof root.clearTimeout === 'function' ? root.clearTimeout.bind(root) : null)
+            || (typeof clearTimeout === 'function' ? clearTimeout : null);
+
+        if (typeof cancelFn === 'function') {
+            cancelFn(timer);
+        }
+    }
+
+    function attributeOf(element, name) {
+        return element && typeof element.getAttribute === 'function'
+            ? element.getAttribute(name)
+            : null;
+    }
+
+    function parseJsonObject(value) {
+        if (!value) {
+            return null;
+        }
+
+        if (typeof value === 'object' && !Array.isArray(value)) {
+            return value;
+        }
+
+        try {
+            var parsed = JSON.parse(String(value));
+
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function findRecordById(componentId) {
+        var found = null;
+
+        advancedComponents.forEach(function (record) {
+            if (found === null && record.componentId === componentId) {
+                found = record;
+            }
+        });
+
+        return found;
+    }
+
+    function documentContains(element) {
+        if (!element) {
+            return false;
+        }
+
+        var doc = state.document || (root && root.document) || null;
+
+        if (doc && doc.documentElement && typeof doc.documentElement.contains === 'function') {
+            try {
+                return doc.documentElement.contains(element);
+            } catch (error) {
+                // fall through to the parent walk below
+            }
+        }
+
+        var cursor = element;
+
+        while (cursor) {
+            if (cursor === doc || cursor === doc.documentElement || cursor === doc.body) {
+                return true;
+            }
+
+            cursor = cursor.parentNode || cursor.parentElement || null;
+        }
+
+        return false;
+    }
+
+    // ------------------------------ URL sync -----------------------------
+
+    function parseSearchString(search) {
+        var params = {};
+        var raw = String(search || '').replace(/^\?/, '');
+
+        if (raw === '') {
+            return params;
+        }
+
+        raw.split('&').forEach(function (pair) {
+            if (pair === '') {
+                return;
+            }
+
+            var separator = pair.indexOf('=');
+            var rawKey = separator === -1 ? pair : pair.slice(0, separator);
+            var rawValue = separator === -1 ? '' : pair.slice(separator + 1);
+            var key;
+            var value;
+
+            try {
+                key = decodeURIComponent(rawKey.replace(/\+/g, ' '));
+            } catch (error) {
+                key = rawKey;
+            }
+
+            try {
+                value = decodeURIComponent(rawValue.replace(/\+/g, ' '));
+            } catch (decodeError) {
+                value = rawValue;
+            }
+
+            if (key === '') {
+                return;
+            }
+
+            if (!Object.prototype.hasOwnProperty.call(params, key)) {
+                params[key] = [];
+            }
+
+            params[key].push(value);
+        });
+
+        return params;
+    }
+
+    function buildSearchString(params) {
+        var parts = [];
+
+        Object.keys(params).forEach(function (key) {
+            var values = params[key];
+
+            if (!Array.isArray(values)) {
+                values = [values];
+            }
+
+            values.forEach(function (value) {
+                parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value)));
+            });
+        });
+
+        return parts.length > 0 ? '?' + parts.join('&') : '';
+    }
+
+    function urlScalar(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        if (typeof value === 'object') {
+            try {
+                return JSON.stringify(value);
+            } catch (error) {
+                return '';
+            }
+        }
+
+        return String(value);
+    }
+
+    /** Serialize one component state value into URL parameter value(s). */
+    function serializeUrlValue(value, definition) {
+        if (value === null || value === undefined) {
+            return null;
+        }
+
+        if (definition.multiple) {
+            var items = Array.isArray(value) ? value : [value];
+            var serialized = items
+                .map(urlScalar)
+                .filter(function (entry) { return entry !== ''; });
+
+            return serialized.length > 0 ? serialized : null;
+        }
+
+        if (definition.type === 'bool') {
+            return value === true || value === 1 || value === '1' || value === 'true' ? '1' : '0';
+        }
+
+        if (definition.type === 'int') {
+            var number = Number(value);
+
+            if (!isFinite(number) || Math.floor(number) !== number) {
+                return null;
+            }
+
+            return String(number);
+        }
+
+        var text = urlScalar(value);
+
+        return text === '' ? null : text;
+    }
+
+    /** Compare a raw URL value with the component's current state value. */
+    function urlMatchesState(raw, current, definition) {
+        if (definition.multiple) {
+            var currentItems = Array.isArray(current) ? current : (current === null || current === undefined ? [] : [current]);
+            var rawItems = Array.isArray(raw) ? raw : [raw];
+
+            if (currentItems.length !== rawItems.length) {
+                return false;
+            }
+
+            return currentItems.every(function (item, index) {
+                return urlScalar(item) === String(rawItems[index]);
+            });
+        }
+
+        if (current === null || current === undefined) {
+            return false;
+        }
+
+        if (definition.type === 'int') {
+            return /^-?\d+$/.test(String(raw)) && String(current) === String(raw);
+        }
+
+        if (definition.type === 'bool') {
+            var truthy = current === true || current === 1 || current === '1' || current === 'true';
+
+            return (truthy && (raw === '1' || raw === 'true'))
+                || (!truthy && (raw === '0' || raw === 'false'));
+        }
+
+        return String(current) === String(raw);
+    }
+
+    /**
+     * Write the component's synchronized state into the URL.
+     *
+     * mode 'replace' keeps the address bar current without new history
+     * entries; mode 'push' records one settled entry per interaction burst.
+     */
+    function syncUrlForRecord(record, mode) {
+        if (!record || !record.querySync) {
+            return;
+        }
+
+        var location = navigationLocation();
+        var history = navigationHistory();
+
+        if (!location || !history || typeof history.replaceState !== 'function') {
+            return;
+        }
+
+        var snapshot = snapshots.get(record.componentId);
+        var currentState = snapshot && snapshot.state && typeof snapshot.state === 'object' && !Array.isArray(snapshot.state)
+            ? snapshot.state
+            : null;
+
+        if (!currentState) {
+            return;
+        }
+
+        var params = parseSearchString(location.search);
+        var changed = false;
+
+        Object.keys(record.querySync).forEach(function (key) {
+            var definition = record.querySync[key];
+
+            if (!definition || typeof definition !== 'object' || !nonEmptyString(definition.param)) {
+                return;
+            }
+
+            if (!Object.prototype.hasOwnProperty.call(currentState, key)) {
+                return;
+            }
+
+            var param = definition.param;
+            var serialized = serializeUrlValue(currentState[key], definition);
+            var existing = Object.prototype.hasOwnProperty.call(params, param) ? params[param] : null;
+
+            if (serialized === null) {
+                if (existing !== null) {
+                    delete params[param];
+                    changed = true;
+                }
+
+                return;
+            }
+
+            var next = (Array.isArray(serialized) ? serialized : [serialized]).map(String);
+
+            if (existing !== null && existing.length === next.length && existing.every(function (value, index) {
+                return value === next[index];
+            })) {
+                return;
+            }
+
+            params[param] = next;
+            changed = true;
+        });
+
+        // Unchanged URLs need no replace, but a settled push must still
+        // record a history entry when this search has not been pushed yet.
+        if (!changed && (mode !== 'push' || record.lastPushedSearch === search)) {
+            return;
+        }
+
+        var search = buildSearchString(params);
+        var target;
+
+        if (nonEmptyString(location.href)) {
+            var href = String(location.href);
+            var hashIndex = href.indexOf('#');
+            var hash = hashIndex >= 0 ? href.slice(hashIndex) : '';
+            var withoutHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href;
+            var queryIndex = withoutHash.indexOf('?');
+            var base = queryIndex >= 0 ? withoutHash.slice(0, queryIndex) : withoutHash;
+            target = base + search + hash;
+        } else {
+            target = String(location.pathname || '') + search + String(location.hash || '');
+        }
+
+        try {
+            if (mode === 'push' && typeof history.pushState === 'function' && record.lastPushedSearch !== search) {
+                history.pushState(null, '', target);
+                record.lastPushedSearch = search;
+            } else {
+                history.replaceState(null, '', target);
+            }
+        } catch (error) {
+            reportError(error, { element: record.root });
+            return;
+        }
+
+        emitRuntimeEvent(record.root, 'firefiber:urlchange', {
+            componentId: record.componentId,
+            search: search,
+            mode: mode,
+        });
+    }
+
+    /** Keep the URL current during an interaction, then settle one entry. */
+    function queueUrlSync(componentId) {
+        var record = findRecordById(componentId);
+
+        if (!record || !record.querySync) {
+            return;
+        }
+
+        syncUrlForRecord(record, 'replace');
+
+        if (record.urlPushTimer !== null && record.urlPushTimer !== undefined) {
+            cancelTimer(record.urlPushTimer);
+        }
+
+        record.urlPushTimer = scheduleTimer(function () {
+            record.urlPushTimer = null;
+            syncUrlForRecord(record, 'push');
+        }, PUSH_SETTLE_MS);
+    }
+
+    function ensureUrlListeners() {
+        if (urlPopstateListener) {
+            return;
+        }
+
+        var window = navigationWindow();
+
+        if (!window || typeof window.addEventListener !== 'function') {
+            return;
+        }
+
+        urlPopstateListener = function () {
+            handleUrlPopstate();
+        };
+
+        window.addEventListener('popstate', urlPopstateListener);
+    }
+
+    function teardownUrlListenersIfEmpty() {
+        if (urlSyncRecords.size > 0 || !urlPopstateListener) {
+            return;
+        }
+
+        var window = navigationWindow();
+
+        if (window && typeof window.removeEventListener === 'function') {
+            window.removeEventListener('popstate', urlPopstateListener);
+        }
+
+        urlPopstateListener = null;
+    }
+
+    /**
+     * Back/forward navigation: push the URL's values back through the normal
+     * validated model action so the server stays authoritative.
+     */
+    function handleUrlPopstate() {
+        var records = Array.from(urlSyncRecords);
+        var location = navigationLocation();
+
+        records.forEach(function (record) {
+            if (!documentContains(record.root)) {
+                cleanupAdvancedComponent(record.root);
+                return;
+            }
+
+            if (record.urlPushTimer !== null && record.urlPushTimer !== undefined) {
+                cancelTimer(record.urlPushTimer);
+                record.urlPushTimer = null;
+            }
+
+            var params = parseSearchString(location ? location.search : '');
+            var snapshot = snapshots.get(record.componentId);
+            var currentState = snapshot && snapshot.state && typeof snapshot.state === 'object'
+                ? snapshot.state
+                : {};
+            var payload = {};
+            var changed = false;
+
+            Object.keys(record.querySync).forEach(function (key) {
+                var definition = record.querySync[key];
+
+                if (!definition || typeof definition !== 'object' || !nonEmptyString(definition.param)) {
+                    return;
+                }
+
+                var param = definition.param;
+                var present = Object.prototype.hasOwnProperty.call(params, param);
+                var raw = present
+                    ? (definition.multiple ? params[param].slice() : params[param][0])
+                    : null;
+                var current = Object.prototype.hasOwnProperty.call(currentState, key)
+                    ? currentState[key]
+                    : undefined;
+
+                if (raw === null) {
+                    // Missing parameter: reset the key to its default.
+                    if (current !== undefined) {
+                        payload[key] = null;
+                        changed = true;
+                    }
+
+                    return;
+                }
+
+                if (!urlMatchesState(raw, current, definition)) {
+                    payload[key] = raw;
+                    changed = true;
+                }
+            });
+
+            if (!changed) {
+                return;
+            }
+
+            var context = {
+                element: record.root,
+                value: '',
+                modifiers: [],
+                event: null,
+                silent: true,
+            };
+
+            // URL state is pushed through the built-in query action so the
+            // server re-validates every value against the component's
+            // declared query-sync configuration instead of trusting
+            // arbitrary model fields.
+            Promise.resolve(dispatchAction(record.root, context, QUERY_ACTION, payload)).then(function () {
+                // Reconcile the URL with whatever the server accepted.
+                syncUrlForRecord(record, 'replace');
+            });
+        });
+    }
+
+    // --------------------------- component records -----------------------
+
+    function setupAdvancedComponent(element) {
+        if (!element || element.nodeType !== 1 || typeof element.getAttribute !== 'function') {
+            return;
+        }
+
+        var componentId = attributeOf(element, 'data-firefiber-component');
+
+        if (!nonEmptyString(componentId) || advancedComponents.has(element)) {
+            return;
+        }
+
+        var pollInterval = parseInt(attributeOf(element, 'data-firefiber-poll') || '', 10);
+        var record = {
+            root: element,
+            componentId: componentId,
+            querySync: parseJsonObject(attributeOf(element, 'data-firefiber-query-sync')),
+            optimistic: parseJsonObject(attributeOf(element, 'data-firefiber-optimistic')),
+            uploadEndpoint: attributeOf(element, 'data-firefiber-upload-endpoint'),
+            pollInterval: isFinite(pollInterval) && pollInterval > 0 ? pollInterval : 0,
+            pollPausedHidden: attributeOf(element, 'data-firefiber-poll-paused-hidden') !== '0',
+            pollTimer: null,
+            pollFailures: 0,
+            pollStopped: false,
+            pollSuspended: false,
+            visibilityListener: null,
+            lazyTrigger: attributeOf(element, 'data-firefiber-lazy'),
+            lazyLoaded: false,
+            lazyInFlight: false,
+            lazyAttempts: 0,
+            lazyObserver: null,
+            lazyRetryTimer: null,
+            urlPushTimer: null,
+            lastPushedSearch: null,
+        };
+
+        advancedComponents.set(element, record);
+
+        if (record.querySync) {
+            var location = navigationLocation();
+            record.lastPushedSearch = location ? String(location.search || '') : '';
+            urlSyncRecords.add(record);
+            ensureUrlListeners();
+        }
+
+        if (record.pollInterval > 0) {
+            schedulePoll(record, record.pollInterval);
+        }
+
+        if (record.lazyTrigger === 'visible') {
+            setupLazyObserver(record);
+        }
+    }
+
+    function cleanupAdvancedComponent(element) {
+        var record = advancedComponents.get(element);
+
+        if (!record) {
+            return false;
+        }
+
+        record.pollStopped = true;
+
+        if (record.pollTimer !== null && record.pollTimer !== undefined) {
+            cancelTimer(record.pollTimer);
+        }
+
+        record.pollTimer = null;
+
+        if (record.lazyRetryTimer !== null && record.lazyRetryTimer !== undefined) {
+            cancelTimer(record.lazyRetryTimer);
+        }
+
+        record.lazyRetryTimer = null;
+
+        if (record.urlPushTimer !== null && record.urlPushTimer !== undefined) {
+            cancelTimer(record.urlPushTimer);
+        }
+
+        record.urlPushTimer = null;
+
+        if (record.lazyObserver && typeof record.lazyObserver.disconnect === 'function') {
+            record.lazyObserver.disconnect();
+        }
+
+        record.lazyObserver = null;
+
+        if (record.visibilityListener) {
+            var doc = navigationDocument();
+
+            if (doc && typeof doc.removeEventListener === 'function') {
+                doc.removeEventListener('visibilitychange', record.visibilityListener);
+            }
+
+            record.visibilityListener = null;
+        }
+
+        advancedComponents.delete(element);
+        urlSyncRecords.delete(record);
+        teardownUrlListenersIfEmpty();
+
+        return true;
+    }
+
+    // ------------------------------ polling ------------------------------
+
+    function isDocumentHidden() {
+        var doc = navigationDocument();
+
+        return !!(doc && typeof doc.hidden === 'boolean' ? doc.hidden : false);
+    }
+
+    function ensureVisibilityListener(record) {
+        if (record.visibilityListener) {
+            return;
+        }
+
+        var doc = navigationDocument();
+
+        if (!doc || typeof doc.addEventListener !== 'function') {
+            return;
+        }
+
+        record.visibilityListener = function () {
+            handleVisibilityChange(record);
+        };
+
+        doc.addEventListener('visibilitychange', record.visibilityListener);
+    }
+
+    function handleVisibilityChange(record) {
+        if (record.pollStopped || !advancedComponents.has(record.root)) {
+            return;
+        }
+
+        if (record.pollPausedHidden && isDocumentHidden()) {
+            record.pollSuspended = true;
+
+            if (record.pollTimer !== null && record.pollTimer !== undefined) {
+                cancelTimer(record.pollTimer);
+                record.pollTimer = null;
+            }
+
+            return;
+        }
+
+        if (record.pollSuspended) {
+            record.pollSuspended = false;
+            schedulePoll(record, 0);
+        }
+    }
+
+    function pollBackoffDelay(record) {
+        return Math.min(record.pollInterval * Math.pow(2, record.pollFailures), 60000);
+    }
+
+    function schedulePoll(record, delay) {
+        if (!record || record.pollStopped || record.pollTimer !== null && record.pollTimer !== undefined) {
+            return;
+        }
+
+        ensureVisibilityListener(record);
+
+        if (record.pollPausedHidden && isDocumentHidden()) {
+            record.pollSuspended = true;
+            return;
+        }
+
+        record.pollTimer = scheduleTimer(function () {
+            record.pollTimer = null;
+            tickPoll(record);
+        }, Math.max(0, delay));
+    }
+
+    function tickPoll(record) {
+        if (record.pollStopped || !advancedComponents.has(record.root)) {
+            return;
+        }
+
+        if (record.pollPausedHidden && isDocumentHidden()) {
+            record.pollSuspended = true;
+            return;
+        }
+
+        var context = {
+            element: record.root,
+            value: '',
+            modifiers: [],
+            event: null,
+            silent: true,
+        };
+        var result;
+
+        try {
+            result = dispatchAction(record.root, context, 'firefiberPoll', {});
+        } catch (error) {
+            reportError(error, context);
+            record.pollFailures += 1;
+            emitRuntimeEvent(record.root, 'firefiber:pollerror', {
+                componentId: record.componentId,
+                error: error && error.message ? error.message : String(error),
+            });
+            schedulePoll(record, pollBackoffDelay(record));
+            return;
+        }
+
+        // dispatchAction resolves null when the request was de-duplicated;
+        // reschedule at the normal interval without counting it as a failure.
+        Promise.resolve(result).then(function (detail) {
+            if (record.pollStopped || !advancedComponents.has(record.root)) {
+                return;
+            }
+
+            if (!detail || typeof detail !== 'object') {
+                schedulePoll(record, record.pollInterval);
+                return;
+            }
+
+            var ok = detail.ok === true
+                && detail.data
+                && (detail.data.status === 'ok' || detail.data.status === 'success');
+
+            if (ok) {
+                record.pollFailures = 0;
+
+                if (detail.data.polling === false) {
+                    record.pollStopped = true;
+                    emitRuntimeEvent(record.root, 'firefiber:pollstopped', detail);
+                    return;
+                }
+
+                emitRuntimeEvent(record.root, 'firefiber:poll', detail);
+                schedulePoll(record, record.pollInterval);
+                return;
+            }
+
+            record.pollFailures += 1;
+            emitRuntimeEvent(record.root, 'firefiber:pollerror', detail);
+            schedulePoll(record, pollBackoffDelay(record));
+        });
+    }
+
+    // ---------------------------- lazy loading ---------------------------
+
+    function setupLazyObserver(record) {
+        var Observer = state.config.IntersectionObserver
+            || (root && root.IntersectionObserver)
+            || null;
+
+        if (typeof Observer === 'function') {
+            try {
+                record.lazyObserver = new Observer(function (entries) {
+                    for (var index = 0; index < entries.length; index++) {
+                        var entry = entries[index];
+
+                        if (entry && (entry.isIntersecting || entry.intersectionRatio > 0)) {
+                            triggerLazyLoad(record, false);
+                            break;
+                        }
+                    }
+                }, typeof state.config.intersectionOptions === 'object' && state.config.intersectionOptions
+                    ? state.config.intersectionOptions
+                    : { threshold: 0.1 });
+
+                record.lazyObserver.observe(record.root);
+
+                return;
+            } catch (error) {
+                reportError(error, { element: record.root });
+                record.lazyObserver = null;
+            }
+        }
+
+        // Progressive enhancement: without an observer the deferred content
+        // loads as soon as the runtime is idle instead of never rendering.
+        record.lazyRetryTimer = scheduleTimer(function () {
+            record.lazyRetryTimer = null;
+            triggerLazyLoad(record, false);
+        }, 0);
+    }
+
+    function triggerLazyLoad(record, manual) {
+        if (!record || record.lazyInFlight || record.lazyLoaded || !advancedComponents.has(record.root)) {
+            return Promise.resolve(null);
+        }
+
+        if (!manual && record.lazyAttempts >= 3) {
+            return Promise.resolve(null);
+        }
+
+        record.lazyInFlight = true;
+        record.lazyAttempts += 1;
+
+        var context = {
+            element: record.root,
+            value: '',
+            modifiers: [],
+            event: null,
+            silent: true,
+        };
+        var result;
+
+        try {
+            result = dispatchAction(record.root, context, 'firefiberLoad', {});
+        } catch (error) {
+            record.lazyInFlight = false;
+            reportError(error, context);
+            emitRuntimeEvent(record.root, 'firefiber:loaderror', {
+                componentId: record.componentId,
+                error: error && error.message ? error.message : String(error),
+            });
+            return Promise.resolve(null);
+        }
+
+        return Promise.resolve(result).then(function (detail) {
+            record.lazyInFlight = false;
+
+            if (
+                detail
+                && detail.ok === true
+                && detail.data
+                && (detail.data.status === 'ok' || detail.data.status === 'success')
+                && detail.data.loaded
+            ) {
+                record.lazyLoaded = true;
+                record.lazyAttempts = 0;
+
+                if (record.lazyRetryTimer !== null && record.lazyRetryTimer !== undefined) {
+                    cancelTimer(record.lazyRetryTimer);
+                    record.lazyRetryTimer = null;
+                }
+
+                if (record.lazyObserver && typeof record.lazyObserver.disconnect === 'function') {
+                    record.lazyObserver.disconnect();
+                }
+
+                record.lazyObserver = null;
+                emitRuntimeEvent(record.root, 'firefiber:loaded', detail);
+
+                return detail;
+            }
+
+            emitRuntimeEvent(record.root, 'firefiber:loaderror', detail);
+
+            // 404 means the component does not support lazy loading at all.
+            var permanent = detail && detail.ok === false && detail.status === 404;
+
+            if (permanent) {
+                record.lazyLoaded = true;
+                return detail;
+            }
+
+            if (record.lazyAttempts < 3) {
+                var delay = 500 * Math.pow(2, record.lazyAttempts - 1);
+
+                record.lazyRetryTimer = scheduleTimer(function () {
+                    record.lazyRetryTimer = null;
+                    triggerLazyLoad(record, false);
+                }, delay);
+            }
+
+            return detail;
+        });
+    }
+
+    function loadLazyById(componentId, options) {
+        var record = findRecordById(componentId);
+
+        if (!record) {
+            return Promise.resolve(null);
+        }
+
+        if (options && options.force) {
+            record.lazyLoaded = false;
+            record.lazyAttempts = 0;
+        }
+
+        return triggerLazyLoad(record, true);
+    }
+
+    // ----------------------------- optimistic ----------------------------
+
+    function optimisticMapFor(componentId) {
+        var record = findRecordById(componentId);
+
+        if (record && record.optimistic) {
+            return record.optimistic;
+        }
+
+        var componentRoot = findComponentRoot(componentId);
+
+        return componentRoot
+            ? parseJsonObject(attributeOf(componentRoot, 'data-firefiber-optimistic'))
+            : null;
+    }
+
+    /** Apply an optimistic state patch to bound values only. */
+    function applyOptimisticState(componentId, patch) {
+        var componentRoot = findComponentRoot(componentId);
+
+        if (!componentRoot || !patch) {
+            return false;
+        }
+
+        applySnapshotToDom(componentId, { state: patch }, true);
+
+        return true;
+    }
+
+    // --------------------------- server-driven HTML ----------------------
+
+    function replaceComponentHtml(componentId, html) {
+        var componentRoot = findComponentRoot(componentId);
+
+        if (!componentRoot || typeof html !== 'string' || typeof componentRoot.innerHTML === 'undefined') {
+            return false;
+        }
+
+        // Copy the live collection before replacing the markup.
+        var oldChildren = [];
+        var children = componentRoot.children;
+
+        if (children) {
+            for (var index = 0; index < children.length; index++) {
+                oldChildren.push(children[index]);
+            }
+        }
+
+        try {
+            componentRoot.innerHTML = html;
+        } catch (error) {
+            reportError(error, { element: componentRoot });
+            return false;
+        }
+
+        for (var oldIndex = 0; oldIndex < oldChildren.length; oldIndex++) {
+            cleanupNode(oldChildren[oldIndex]);
+        }
+
+        scanNode(componentRoot);
+
+        return true;
+    }
+
+    // -------------------------------- uploads ----------------------------
+
+    function componentRootOf(element) {
+        var current = element;
+
+        while (current && current.nodeType === 1) {
+            if (attributeOf(current, 'data-firefiber-component')) {
+                return current;
+            }
+
+            current = current.parentNode || current.parentElement || null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Upload files for a component field through the dedicated multipart
+     * endpoint. Progress, success and failure surface as runtime events.
+     */
+    function uploadFiles(componentId, field, files, options) {
+        options = options || {};
+
+        var record = findRecordById(componentId);
+        var componentRoot = (record && record.root) || findComponentRoot(componentId);
+
+        if (!componentRoot) {
+            return Promise.reject(new Error('Unknown Firefiber component: ' + componentId));
+        }
+
+        if (!nonEmptyString(field)) {
+            return Promise.reject(new Error('A Firefiber upload field is required.'));
+        }
+
+        var config = resolveActionConfig(componentRoot);
+        var endpoint = options.endpoint
+            || (record && record.uploadEndpoint)
+            || attributeOf(componentRoot, 'data-firefiber-upload-endpoint');
+
+        if (!nonEmptyString(endpoint)) {
+            return Promise.reject(new Error('Firefiber upload endpoint is not configured.'));
+        }
+
+        if (!nonEmptyString(config.csrfToken)) {
+            return Promise.reject(new Error('Firefiber CSRF token is missing.'));
+        }
+
+        var list = files && typeof files.length === 'number'
+            ? Array.prototype.slice.call(files)
+            : [files];
+        list = list.filter(function (file) { return !!file; });
+
+        if (list.length === 0) {
+            return Promise.resolve({
+                ok: false,
+                status: 0,
+                componentId: componentId,
+                field: field,
+                error: 'No files selected.',
+            });
+        }
+
+        var XHR = state.config.XMLHttpRequest
+            || (root && root.XMLHttpRequest)
+            || (typeof XMLHttpRequest !== 'undefined' ? XMLHttpRequest : null);
+
+        if (typeof XHR !== 'function') {
+            return Promise.reject(new Error('XMLHttpRequest is not available.'));
+        }
+
+        var FormDataConstructor = state.config.FormData
+            || (root && root.FormData)
+            || (typeof FormData !== 'undefined' ? FormData : null);
+
+        if (typeof FormDataConstructor !== 'function') {
+            return Promise.reject(new Error('FormData is not available.'));
+        }
+
+        var formData = new FormDataConstructor();
+        var fieldName = list.length > 1 ? field + '[]' : field;
+
+        list.forEach(function (file) {
+            formData.append(fieldName, file);
+        });
+
+        var requestId = createRequestId();
+        formData.append('componentId', componentId);
+        formData.append('componentName', config.componentName || '');
+        formData.append('componentClass', config.componentName || '');
+        formData.append('field', field);
+        formData.append('requestId', requestId);
+        formData.append('protocolVersion', config.protocolVersion);
+        formData.append('csrfToken', config.csrfToken);
+
+        if (config.snapshot) {
+            formData.append('snapshot', JSON.stringify(config.snapshot));
+        }
+
+        return new Promise(function (resolve) {
+            var xhr = new XHR();
+
+            try {
+                xhr.open('POST', String(endpoint), true);
+                xhr.setRequestHeader('X-Firefiber-Target', '1');
+                xhr.setRequestHeader('X-Firefiber-Upload', '1');
+                xhr.setRequestHeader('X-Csrf-Token', config.csrfToken);
+                xhr.setRequestHeader('Accept', 'application/json');
+                xhr.withCredentials = config.credentials === 'include';
+
+                if (xhr.upload && typeof xhr.upload.addEventListener === 'function') {
+                    xhr.upload.addEventListener('progress', function (event) {
+                        var total = event && event.lengthComputable ? Number(event.total) : 0;
+                        var loaded = event ? Number(event.loaded) : 0;
+
+                        emitRuntimeEvent(componentRoot, 'firefiber:uploadprogress', {
+                            componentId: componentId,
+                            field: field,
+                            requestId: requestId,
+                            loaded: loaded,
+                            total: total,
+                            percent: total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0,
+                        });
+                    });
+                }
+
+                xhr.onload = function () {
+                    var payload = null;
+
+                    try {
+                        payload = JSON.parse(String(xhr.responseText || ''));
+                    } catch (error) {
+                        payload = null;
+                    }
+
+                    var ok = xhr.status >= 200 && xhr.status < 300
+                        && payload
+                        && (payload.status === 'ok' || payload.status === 'success');
+                    var detail = {
+                        requestId: requestId,
+                        componentId: componentId,
+                        field: field,
+                        status: Number(xhr.status) || 0,
+                        ok: !!ok,
+                        data: payload,
+                        error: payload && payload.error ? payload.error : null,
+                        errorCode: payload && payload.errorCode !== undefined ? payload.errorCode : null,
+                    };
+
+                    if (ok) {
+                        if (
+                            payload.html
+                            && typeof payload.html === 'string'
+                            && payload.snapshot
+                            && typeof payload.snapshot === 'object'
+                            && !Array.isArray(payload.snapshot)
+                        ) {
+                            // Server-driven re-render: the staged file list is
+                            // rebuilt from authoritative state, then binds apply.
+                            replaceComponentHtml(componentId, payload.html);
+                        }
+
+                        if (
+                            payload.snapshot
+                            && typeof payload.snapshot === 'object'
+                            && !Array.isArray(payload.snapshot)
+                        ) {
+                            rememberSnapshot(componentId, payload.snapshot);
+                            applySnapshotToDom(componentId, payload.snapshot);
+                        }
+
+                        clearValidationErrors(componentId);
+                        emitRuntimeEvent(componentRoot, 'firefiber:uploadsuccess', detail);
+                    } else {
+                        if (payload && payload.errors) {
+                            updateValidationErrorDisplay(payload.errors, componentId);
+                        }
+
+                        emitRuntimeEvent(componentRoot, 'firefiber:uploaderror', detail);
+                    }
+
+                    resolve(detail);
+                };
+
+                xhr.onerror = function () {
+                    var detail = {
+                        requestId: requestId,
+                        componentId: componentId,
+                        field: field,
+                        status: 0,
+                        ok: false,
+                        data: null,
+                        error: 'Upload failed: network error',
+                        kind: 'network',
+                    };
+
+                    emitRuntimeEvent(componentRoot, 'firefiber:uploaderror', detail);
+                    resolve(detail);
+                };
+
+                xhr.onabort = function () {
+                    var detail = {
+                        requestId: requestId,
+                        componentId: componentId,
+                        field: field,
+                        status: 0,
+                        ok: false,
+                        data: null,
+                        error: 'Upload aborted',
+                        kind: 'abort',
+                    };
+
+                    emitRuntimeEvent(componentRoot, 'firefiber:uploaderror', detail);
+                    resolve(detail);
+                };
+
+                xhr.send(formData);
+            } catch (error) {
+                var detail = {
+                    requestId: requestId,
+                    componentId: componentId,
+                    field: field,
+                    status: 0,
+                    ok: false,
+                    data: null,
+                    error: error && error.message ? error.message : String(error),
+                    kind: 'exception',
+                };
+
+                emitRuntimeEvent(componentRoot, 'firefiber:uploaderror', detail);
+                resolve(detail);
+            }
+        });
+    }
+
+    function handleUpload(event, context) {
+        var element = context.element;
+        var field = String(context.value || '').trim();
+        var files = element && element.files;
+
+        if (!files || files.length === 0) {
+            return;
+        }
+
+        var componentRoot = componentRootOf(element);
+        var componentId = componentRoot ? attributeOf(componentRoot, 'data-firefiber-component') : null;
+
+        if (!nonEmptyString(componentId)) {
+            emitRuntimeEvent(element, 'firefiber:uploaderror', {
+                action: 'upload',
+                error: 'Upload control is outside a Firefiber component',
+                kind: 'configuration',
+            });
+            return;
+        }
+
+        uploadFiles(componentId, field, files).catch(function (error) {
+            emitRuntimeEvent(element, 'firefiber:uploaderror', {
+                componentId: componentId,
+                field: field,
+                error: error && error.message ? error.message : String(error),
+                kind: 'exception',
+            });
+        });
     }
 
     registry.register('click', {
@@ -3537,6 +5160,8 @@
 
     registry.register('confirm', {});
 
+    registry.register('error', {});
+
     registry.register('change', {
         event: 'change',
         handler: handleChange,
@@ -3553,6 +5178,11 @@
 
     registry.register('dirty', {
         setup: setupDirty,
+    });
+
+    registry.register('upload', {
+        event: 'change',
+        handler: handleUpload,
     });
 
     var api = {
@@ -3590,6 +5220,70 @@
 
         scan: scan,
         cleanup: cleanupNode,
+
+        /**
+         * Upload files for a component field. Returns a promise resolving to
+         * the action detail; progress arrives as firefiber:uploadprogress.
+         */
+        upload: uploadFiles,
+
+        /** Force a lazy component to load (resets the retry budget). */
+        loadLazy: function loadLazy(componentId) {
+            return loadLazyById(componentId, { force: true });
+        },
+
+        /** Alias for loadLazy() kept for symmetry with retry semantics. */
+        retryLazy: function retryLazy(componentId) {
+            return loadLazyById(componentId, { force: true });
+        },
+
+        /** Start polling for a component (after stopPolling). */
+        startPolling: function startPolling(componentId) {
+            var record = findRecordById(componentId);
+
+            if (!record || record.pollInterval <= 0) {
+                return false;
+            }
+
+            record.pollStopped = false;
+            record.pollFailures = 0;
+            record.pollSuspended = false;
+            schedulePoll(record, record.pollInterval);
+
+            return true;
+        },
+
+        /** Pause polling for a component until startPolling is called. */
+        stopPolling: function stopPolling(componentId) {
+            var record = findRecordById(componentId);
+
+            if (!record) {
+                return false;
+            }
+
+            record.pollStopped = true;
+
+            if (record.pollTimer !== null && record.pollTimer !== undefined) {
+                cancelTimer(record.pollTimer);
+            }
+
+            record.pollTimer = null;
+
+            return true;
+        },
+
+        /** Write the component's synchronized state into the URL now. */
+        syncUrl: function syncUrl(componentId) {
+            var record = findRecordById(componentId);
+
+            if (!record) {
+                return false;
+            }
+
+            syncUrlForRecord(record, 'replace');
+
+            return true;
+        },
 
         isBooted: function isBooted() {
             return state.booted === true;

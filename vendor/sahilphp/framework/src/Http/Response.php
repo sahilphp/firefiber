@@ -6,6 +6,7 @@ namespace Sahil\Http;
 
 use InvalidArgumentException;
 use JsonException;
+use Sahil\View\RenderedView;
 
 /**
  * Immutable HTTP response: validated status, validated headers and a body.
@@ -29,6 +30,12 @@ final class Response
     private HeaderBag $headers;
 
     private string $body;
+
+    /** The rendered view behind an HTML response, when the view layer supplied one. */
+    private ?RenderedView $renderedView = null;
+
+    /** Target frontend name (`vue`, `react`, `svelte`, …), or null for native HTML. */
+    private ?string $frontend = null;
 
     /**
      * @param array<string, scalar|array<int, scalar>|null> $headers
@@ -64,13 +71,91 @@ final class Response
     /**
      * HTML response.
      *
+     * Accepts either finished markup or a {@see RenderedView}. A rendered
+     * view keeps its template, data and context attached to the response, so
+     * a frontend adapter can resolve a component without re-parsing HTML.
+     *
      * The body is taken as already-rendered markup: the view layer escapes
      * every value it interpolates (see {@see \Sahil\View\Escaper}), so the
      * charset is declared here and the bytes are sent as produced.
      */
-    public static function html(string $body, int $status = 200): self
+    public static function html(string|RenderedView $body, int $status = 200): self
     {
-        return new self($status, ['Content-Type' => 'text/html; charset=utf-8'], $body);
+        $rendered = $body instanceof RenderedView ? $body : null;
+        $response = new self(
+            $status,
+            ['Content-Type' => 'text/html; charset=utf-8'],
+            $rendered?->markup() ?? $body,
+        );
+        $response->renderedView = $rendered;
+
+        return $response;
+    }
+
+    /**
+     * Vue response: an HTML response tagged for the `vue` frontend.
+     *
+     * The adapter is resolved later by the configured frontend renderer,
+     * which keeps these static factories free of container lookups or global
+     * state. Pass the rendered view (not just markup) so the adapter can
+     * resolve its entry component.
+     */
+    public static function vue(string|self|RenderedView $view, int $status = 200): self
+    {
+        return self::frontendResponse('vue', $view, $status);
+    }
+
+    /** React response, tagged for the `react` frontend. */
+    public static function react(string|self|RenderedView $view, int $status = 200): self
+    {
+        return self::frontendResponse('react', $view, $status);
+    }
+
+    /** Svelte response, tagged for the `svelte` frontend. */
+    public static function svelte(string|self|RenderedView $view, int $status = 200): self
+    {
+        return self::frontendResponse('svelte', $view, $status);
+    }
+
+    /**
+     * Tag any response for a frontend while preserving its status, headers
+     * and rendered view. Used by the named factories above.
+     */
+    public function withFrontend(string $frontend): self
+    {
+        if (preg_match('/^[a-z][a-z0-9-]*$/', $frontend) !== 1) {
+            throw new InvalidArgumentException(sprintf(
+                'Frontend name [%s] must be lower-case letters, digits and dashes.',
+                $frontend,
+            ));
+        }
+
+        $clone = clone $this;
+        $clone->frontend = $frontend;
+
+        return $clone;
+    }
+
+    /** The frontend target of this response, or null for native HTML. */
+    public function frontend(): ?string
+    {
+        return $this->frontend;
+    }
+
+    /**
+     * The rendered view this response was built from, when the caller passed
+     * one to {@see html()}.
+     */
+    public function renderedView(): ?RenderedView
+    {
+        return $this->renderedView;
+    }
+
+    private static function frontendResponse(string $frontend, string|self|RenderedView $view, int $status): self
+    {
+        $response = $view instanceof self ? $view : self::html($view, $status);
+
+        return $response->withFrontend($frontend);
     }
 
     /**

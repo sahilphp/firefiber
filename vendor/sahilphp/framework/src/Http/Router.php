@@ -153,6 +153,16 @@ final class Router
         return $this->routes === [];
     }
 
+    /**
+     * Every registered route, in registration order.
+     *
+     * @return list<Route>
+     */
+    public function routes(): array
+    {
+        return $this->routes;
+    }
+
     public function routeCount(): int
     {
         return count($this->routes);

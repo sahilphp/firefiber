@@ -76,9 +76,9 @@ final class InstallReport
         if (!$this->dryRun) {
             $lines[] = '';
             $lines[] = 'Next:';
-            $lines[] = '  bin/sahil ui:build      # production assets';
-            $lines[] = '  bin/sahil ui:dev        # Vite development server';
-            $lines[] = '  bin/sahil ui:status     # prerequisites and asset state';
+            $lines[] = '  php sahil ui:build      # production assets';
+            $lines[] = '  php sahil ui:dev        # Vite development server';
+            $lines[] = '  php sahil ui:status     # prerequisites and asset state';
         }
 
         return $lines;

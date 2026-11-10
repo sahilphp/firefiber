@@ -17,8 +17,11 @@ use Sahil\Database\Connection;
  *  - `fillable` is the mass-assignment allowlist (empty = nothing can be
  *    mass-assigned — loud {@see MassAssignmentException} otherwise;
  *    `$guarded` entries are refused even when listed in fillable).
- *  - `casts` may specify per-attribute `int|float|bool|string` (applied
- *    explicitly — the ORM never guesses types).
+ *  - `casts` may specify per-attribute
+ *    `int|float|bool|string|datetime|hashed` (applied explicitly — the ORM
+ *    never guesses types). `datetime` reads a stored textual timestamp as an
+ *    immutable date object; `hashed` documents that the attribute holds a
+ *    one-way hash and is returned unchanged.
  *  - `$hidden` attributes (and loaded relations marked hidden) never
  *    appear in `toArray()` / `json_encode()`.
  *  - `$timestamps` maintains `created_at`/`updated_at` (SQL DATETIME
@@ -236,8 +239,8 @@ abstract class Model
     }
 
     /**
-     * Explicit per-attribute casting (int|float|bool|string). No-op for
-     * attributes that aren't declared — the ORM never guesses.
+     * Explicit per-attribute casting (int|float|bool|string|datetime|hashed).
+     * No-op for attributes that aren't declared — the ORM never guesses.
      */
     private function castAttribute(string $key): mixed
     {
@@ -252,6 +255,10 @@ abstract class Model
             'float' => (float) $value,
             'bool' => (bool) $value,         // DB ints 0/1 → false/true
             'string' => (string) $value,
+            'datetime' => $value instanceof \DateTimeImmutable
+                ? $value
+                : new \DateTimeImmutable((string) $value),
+            'hashed' => $value,              // already a one-way hash; never re-hash on read
             default => $value,
         };
     }

@@ -50,6 +50,7 @@ final class MySqlGrammar extends AbstractGrammar
             'integer' => 'INT'.$unsigned,
             'string' => sprintf('VARCHAR(%d)', $column->lengthValue() ?? 255),
             'text' => 'TEXT',
+            'longText' => 'LONGTEXT',
             'boolean' => 'TINYINT(1)',
             // DATETIME matches the textual 'Y-m-d H:i:s' form the ORM writes.
             'timestamp', 'dateTime' => 'DATETIME',

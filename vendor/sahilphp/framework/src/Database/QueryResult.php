@@ -32,6 +32,17 @@ final class QueryResult
      *
      * @return list<array<string, mixed>>
      */
+    /**
+     * All rows as associative arrays. Alias of {@see rows()} kept for the
+     * conventional PDO-style call sites.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function fetchAll(): array
+    {
+        return $this->rows();
+    }
+
     public function rows(): array
     {
         if ($this->fetched !== null) {

@@ -90,7 +90,7 @@ final class UiStatus
 
         if ($profile === null) {
             $issues[] = 'No UI profile is recorded and none could be inferred. '
-                .'Run `bin/sahil ui:install --profile=tailwind|bootstrap|both|none`.';
+                .'Run `php sahil ui:install --profile=tailwind|bootstrap|both|none`.';
         }
 
         foreach ($toolchain->issues() as $issue) {
@@ -99,14 +99,14 @@ final class UiStatus
 
         if ($missingSources !== []) {
             $issues[] = sprintf(
-                'Missing generated source file(s): %s. Re-run `bin/sahil ui:install`.',
+                'Missing generated source file(s): %s. Re-run `php sahil ui:install`.',
                 implode(', ', $missingSources),
             );
         }
 
         if ($missingPackages !== []) {
             $issues[] = sprintf(
-                'Missing npm package(s): %s. Run `bin/sahil ui:install` or `%s install`.',
+                'Missing npm package(s): %s. Run `php sahil ui:install` or `%s install`.',
                 implode(', ', $missingPackages),
                 $toolchain->packageManager ?? 'npm',
             );
@@ -114,14 +114,14 @@ final class UiStatus
 
         if ($missingAssets !== []) {
             $issues[] = sprintf(
-                'Missing build output(s): %s. Run `bin/sahil ui:build`.',
+                'Missing build output(s): %s. Run `php sahil ui:build`.',
                 implode(', ', $missingAssets),
             );
         }
 
         if ($staleAssets !== []) {
             $issues[] = sprintf(
-                'Build output is older than the source file(s) it was built from: %s. Run `bin/sahil ui:build`.',
+                'Build output is older than the source file(s) it was built from: %s. Run `php sahil ui:build`.',
                 implode(', ', $staleAssets),
             );
         }

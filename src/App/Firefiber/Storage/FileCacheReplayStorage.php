@@ -29,7 +29,7 @@ final class FileCacheReplayStorage implements ReplayStorageInterface
         string $fingerprint,
         string|int $ownerIdOrMaxAge = 300,
         int $maxAgeSeconds = 300,
-    ): string|false {
+    ): string {
         if (is_string($ownerIdOrMaxAge)) {
             $ownerId = $ownerIdOrMaxAge;
         } else {
@@ -46,7 +46,7 @@ final class FileCacheReplayStorage implements ReplayStorageInterface
         string $fingerprint,
         string $ownerId,
         int $maxAgeSeconds = 300,
-    ): string|false {
+    ): string {
         if ($requestId === '' || $fingerprint === '' || $ownerId === '' || $maxAgeSeconds <= 0) {
             return self::INVALID_PARAMETERS;
         }

@@ -225,7 +225,7 @@ final class ProjectInstaller
             throw new InstallerException(sprintf('Unable to resolve starter-kit directory [%s].', $sourcePath));
         }
 
-        foreach (['composer.json', 'bin/sahil', 'bootstrap/app.php'] as $file) {
+        foreach (['composer.json', 'sahil', 'bootstrap/app.php'] as $file) {
             if (!is_file($resolved.'/'.$file)) {
                 throw new InstallerException(sprintf(
                     'Starter-kit directory [%s] is incomplete: missing %s.',

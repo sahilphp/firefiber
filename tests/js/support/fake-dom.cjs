@@ -9,6 +9,27 @@ class FakeElement {
         this.ownerDocument = null;
         this.attributes = [];
         this.listeners = new Map();
+        this._innerHTML = '';
+    }
+
+    /**
+     * Minimal innerHTML support: the setter stores the markup string and
+     * detaches the current children (there is no HTML parser in the shim).
+     * Tests assert against the stored markup; the runtime treats the
+     * children as replaced.
+     */
+    get innerHTML() {
+        return this._innerHTML;
+    }
+
+    set innerHTML(value) {
+        this._innerHTML = String(value);
+
+        for (const child of this.children.slice()) {
+            child.parentNode = null;
+        }
+
+        this.children = [];
     }
 
     setAttribute(name, value) {
@@ -175,6 +196,46 @@ class FakeDocument {
         this.body = this.documentElement.append(new FakeElement('body'));
         this.cookie = '';
         this.location = null;
+        this.hidden = false;
+        this.listeners = new Map();
+    }
+
+    addEventListener(event, listener) {
+        if (!this.listeners.has(event)) {
+            this.listeners.set(event, []);
+        }
+
+        this.listeners.get(event).push(listener);
+    }
+
+    removeEventListener(event, listener) {
+        if (!this.listeners.has(event)) {
+            return;
+        }
+
+        this.listeners.set(
+            event,
+            this.listeners.get(event).filter((entry) => entry !== listener),
+        );
+    }
+
+    dispatchEvent(event) {
+        const listeners = (this.listeners.get(event.type) || []).slice();
+
+        for (const listener of listeners) {
+            listener.call(this, event);
+        }
+
+        return true;
+    }
+
+    listenerCount(event) {
+        return (this.listeners.get(event) || []).length;
+    }
+
+    setVisibility(hidden) {
+        this.hidden = hidden === true;
+        this.dispatchEvent({ type: 'visibilitychange', target: this });
     }
 
     createElement(tagName) {
