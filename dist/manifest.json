@@ -1,10 +1,10 @@
 {
   "name": "runtime.min.js",
   "source": "js/firefiber.js",
-  "source_sha256": "01e2883016a796f8e5ace4ebb74d55567061abab43ea603d08a31e6cf90f1e30",
-  "runtime_sha256": "c4f7a222fb3e7e69eeee85bc16804305add1540861eaf9cbe7ba64d43c6f698b",
-  "runtime_sri": "sha384-XexO0RZUH4aQRbqQAUWFT6x2lpVHOqA/iKzK4v66r9iGsCi1s/rLzQxhZmhBJefd",
-  "runtime_bytes": 56773,
+  "source_sha256": "2dfa5a2a0ce054dbf6d7aa3d41c817ae49e9bfdd3a508ad8061a452456a30d9b",
+  "runtime_sha256": "07b6cffc02d99197a7947eb1fd9f36509f9ff9965eaa594701f40407159cc4a7",
+  "runtime_sri": "sha384-YhkN+Z64vXBRTZ0Oklgu+QahWCeoZQSe11lP18eu/vbVhDQABMlqSiF4PqiZFvjD",
+  "runtime_bytes": 57744,
   "minified": true,
   "obfuscated": false,
   "css": {

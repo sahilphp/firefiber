@@ -359,9 +359,17 @@ forward — answers `409 Conflict` (`errorCode` 5 = expired, 6 = modified).
 The runtime recovers by itself: it requests the server's authoritative
 snapshot (`type: "getSnapshot"`), applies it to the component, emits
 `firefiber:resync`, and replays the action once with the fresh snapshot and a
-new request id. If the server can no longer produce a snapshot (the component
-state was pruned), the interaction fails as before with `firefiber:expired` /
-`firefiber:error` — nothing is retried blindly.
+new request id.
+
+If the server no longer holds state for the component (storage cleared, state
+pruned, redeploy), no snapshot can be produced. The runtime then emits
+`firefiber:expired` with `recoverable: false` and reloads the page, so the
+component is rendered — and registered — again; the click itself is not
+replayed. The reload is attempted at most once per page per 15 seconds, so a
+server that cannot persist state cannot trap the browser in a reload loop.
+`firefiber:expired` for a snapshot that could not be re-synchronised yet keeps
+`recoverable: true`, and a `reload` hook (`Firefiber.configure({ reload })`)
+replaces the default `window.location.reload()`.
 
 ## Secure uploads
 

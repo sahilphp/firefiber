@@ -433,6 +433,47 @@ test('a failed re-synchronisation still surfaces the expired snapshot', async ()
     assert.equal(JSON.parse(fetcher.calls[1].options.body).type, 'getSnapshot');
 });
 
+test('a component whose server state is gone reloads the page instead of staying dead', async () => {
+    const fetch = captureFetch((call) => {
+        if (call === 1) {
+            return responseFor({
+                status: 'error',
+                error: 'Component state is missing or expired',
+                errorCode: 5,
+            }, 409);
+        }
+
+        // getSnapshot for a component the server no longer tracks: success,
+        // but without an authoritative snapshot to replay against.
+        return responseFor({
+            status: 'snapshot',
+            componentId: COMPONENT_ID,
+            state: [],
+        });
+    });
+    let reloads = 0;
+    const { button, fetch: fetcher } = setup({
+        fetch,
+        config: {
+            reload() {
+                reloads += 1;
+            },
+        },
+    });
+    const expired = waitForEvent(button, 'firefiber:expired');
+
+    dispatchClick(button);
+    const event = await expired;
+
+    assert.equal(event.detail.errorCode, 5);
+    assert.equal(event.detail.recoverable, false);
+    assert.equal(fetcher.calls.length, 2, 'one action, one re-sync, no blind replay');
+    assert.equal(JSON.parse(fetcher.calls[1].options.body).type, 'getSnapshot');
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(reloads, 1, 'the document is rendered again');
+});
+
 test('removal and stop clean up click listeners', async () => {
     const first = setup();
     const observer = FakeMutationObserver.instances[0];

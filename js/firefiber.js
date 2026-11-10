@@ -3225,6 +3225,84 @@
         return errorCode === null || errorCode === 5 || errorCode === 6;
     }
 
+    // Re-sync outcome: the server no longer holds state for this component, so
+    // there is nothing to replay. Only a fresh document render can rebuild it.
+    var RESYNC_STATE_LOST = 'state-lost';
+
+    // A page that reloads and loses its state again within this window would
+    // loop, so the automatic reload happens at most once per window.
+    var RELOAD_GUARD_MS = 15000;
+
+    /**
+     * Re-render the document after the server reported that the component
+     * state is gone (cleared storage, expired state, or a redeploy). The
+     * component gets a fresh identity and snapshot from the new render.
+     */
+    function reloadStaleDocument() {
+        var document = state.document || null;
+        var view = document && document.defaultView ? document.defaultView : null;
+        var reload = state.config.reload;
+
+        if (typeof reload !== 'function') {
+            var location = view && view.location ? view.location : null;
+
+            if (!location || typeof location.reload !== 'function') {
+                return false;
+            }
+
+            reload = function () {
+                location.reload();
+            };
+        }
+
+        if (!claimReloadSlot(view)) {
+            return false;
+        }
+
+        try {
+            reload();
+        } catch (error) {
+            reportError(error, { element: null });
+        }
+
+        return true;
+    }
+
+    function claimReloadSlot(view) {
+        var storage = null;
+
+        try {
+            storage = view && view.sessionStorage ? view.sessionStorage : null;
+        } catch (error) {
+            storage = null;
+        }
+
+        var location = view && view.location ? view.location : null;
+        var key = 'firefiber:state-loss:' + (location && location.pathname ? location.pathname : '');
+        var now = Date.now();
+        var last = 0;
+
+        try {
+            last = Number(storage && storage.getItem(key)) || 0;
+        } catch (error) {
+            last = 0;
+        }
+
+        if (now - last < RELOAD_GUARD_MS) {
+            return false;
+        }
+
+        try {
+            if (storage) {
+                storage.setItem(key, String(now));
+            }
+        } catch (error) {
+            // Private mode without storage still reloads once.
+        }
+
+        return true;
+    }
+
     /**
      * Fetch the server's authoritative snapshot for this component and adopt
      * it, so a stale page can recover without a full reload. Returns false when
@@ -3286,7 +3364,9 @@
             || typeof snapshot !== 'object'
             || !nonEmptyString(snapshot.signature)
         ) {
-            return false;
+            // A successful re-sync without a snapshot means the component
+            // state was pruned; replaying against it cannot succeed.
+            return RESYNC_STATE_LOST;
         }
 
         rememberSnapshot(config.componentId, snapshot);
@@ -3454,6 +3534,8 @@
             beginActionLoading(element, action);
         }
 
+        var recovery = false;
+
         try {
             var exchange = await sendActionRequest(config, action, payload, requestId);
 
@@ -3462,7 +3544,30 @@
             // request already moved the component forward), fetch the
             // authoritative snapshot and replay the action once instead of
             // leaving the control silently dead.
-            if (isStaleSnapshot(exchange) && await resynchronize(element, config)) {
+            if (isStaleSnapshot(exchange)) {
+                recovery = await resynchronize(element, config);
+            }
+
+            if (recovery === RESYNC_STATE_LOST) {
+                // The component state is gone: no snapshot can be replayed, so
+                // re-render the page. Reported as unrecoverable first so app
+                // code can react before the document navigates away.
+                emitRuntimeEvent(element, 'firefiber:expired', {
+                    requestId: requestId,
+                    componentId: config.componentId,
+                    action: action,
+                    status: exchange.status,
+                    ok: false,
+                    data: exchange.payload,
+                    error: exchange.payload && exchange.payload.error ? exchange.payload.error : null,
+                    errorCode: exchange.payload && exchange.payload.errorCode !== undefined
+                        ? Number(exchange.payload.errorCode)
+                        : null,
+                    recoverable: false,
+                });
+
+                scheduleTimer(reloadStaleDocument, 0);
+            } else if (recovery === true) {
                 var refreshed = resolveActionConfig(element) || config;
 
                 emitRuntimeEvent(element, 'firefiber:resync', {
@@ -3568,7 +3673,11 @@
                 updateValidationErrorDisplay(responsePayload && responsePayload.errors ? responsePayload.errors : {}, config.componentId);
                 emitRuntimeEvent(element, 'firefiber:validation-error', detail);
             } else if (errorCode === 5) {
-                emitRuntimeEvent(element, 'firefiber:expired', detail);
+                detail.recoverable = recovery !== RESYNC_STATE_LOST;
+
+                if (recovery !== RESYNC_STATE_LOST) {
+                    emitRuntimeEvent(element, 'firefiber:expired', detail);
+                }
             } else {
                 emitRuntimeEvent(element, 'firefiber:error', detail);
             }
