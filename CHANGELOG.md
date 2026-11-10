@@ -16,6 +16,11 @@
 
 ### Fixed
 
+- `fiber:click` sends `data-firefiber-payload` as the action payload instead of
+  an empty object, so paging and sorting buttons (for example the starter
+  admin table's) reach `handleAction()` with their arguments. The value may sit
+  on the element or an enclosing element; clicks still do not serialize form
+  controls.
 - Actions on a page whose signed snapshot aged out (default 300 s) no longer
   fail with a silent `409 Conflict`: the runtime fetches the authoritative
   snapshot (`getSnapshot`), applies it, emits `firefiber:resync` and replays

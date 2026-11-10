@@ -229,6 +229,64 @@ test('fiber:click sends the component class and updates bound state after succes
     assert.equal(JSON.parse(root.getAttribute('data-firefiber-snapshot')).state.count, 2);
 });
 
+test('fiber:click sends the arguments from data-firefiber-payload', async () => {
+    const { button, fetch } = setup({
+        action: 'goToPage',
+        attributes: { 'data-firefiber-payload': JSON.stringify({ page: 2 }) },
+    });
+    const success = waitForEvent(button, 'firefiber:success');
+
+    dispatchClick(button);
+    await success;
+
+    const body = JSON.parse(fetch.calls[0].options.body);
+    assert.equal(body.action, 'goToPage');
+    assert.deepEqual(body.payload, { page: 2 });
+});
+
+test('fiber:click inherits payload arguments from an enclosing element', async () => {
+    const { button, root, fetch } = setup({ action: 'sortBy' });
+    root.setAttribute('data-firefiber-payload', JSON.stringify({ field: 'email' }));
+    const success = waitForEvent(button, 'firefiber:success');
+
+    dispatchClick(button);
+    await success;
+
+    assert.deepEqual(JSON.parse(fetch.calls[0].options.body).payload, { field: 'email' });
+});
+
+test('a replayed action keeps the click arguments', async () => {
+    const fetch = captureFetch((call) => {
+        if (call === 1) {
+            return responseFor({ status: 'error', error: 'Snapshot expired', errorCode: 5 }, 409);
+        }
+
+        if (call === 2) {
+            return responseFor({
+                status: 'snapshot',
+                componentId: COMPONENT_ID,
+                state: { page: 1 },
+                snapshot: makeSnapshot(COMPONENT_ID, 1, 'resynced-snapshot'),
+            });
+        }
+
+        return responseFor(successPayload());
+    });
+    const { button, fetch: fetcher } = setup({
+        action: 'goToPage',
+        attributes: { 'data-firefiber-payload': JSON.stringify({ page: 3 }) },
+        fetch,
+    });
+    const success = waitForEvent(button, 'firefiber:success');
+
+    dispatchClick(button);
+    await success;
+
+    const replay = JSON.parse(fetcher.calls[2].options.body);
+    assert.equal(replay.action, 'goToPage');
+    assert.deepEqual(replay.payload, { page: 3 });
+});
+
 test('fiber:click suppresses duplicate submissions while the same action is pending', async () => {
     let resolveFetch;
     let markFetchStarted;

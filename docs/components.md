@@ -40,6 +40,18 @@ Component state is persisted by Firefiber after a successful action. A browser
 snapshot records the state it came from, but actions always hydrate from the
 server-side state record, not from untrusted browser data.
 
+An action that needs arguments gets them from `data-firefiber-payload`, a JSON
+object on the element (or on an enclosing element):
+
+```php
+return '<button type="button" fiber:click="goToPage"'
+    .' data-firefiber-payload="'.self::escape((string) json_encode(['page' => 2])).'">'
+    .'Next</button>';
+```
+
+`handleAction()` then receives `['page' => 2]`. A form submission sends its
+controls instead, and a `fiber:model` control sends the field it edits.
+
 ## Properties and nested components
 
 Declare server-supplied properties separately from mutable state:

@@ -1562,7 +1562,11 @@
             return;
         }
 
-        return dispatchAction(element, context, parsed.action, {});
+        // A click carries its own arguments in data-firefiber-payload, e.g. a
+        // paging or sorting button. resolveActionConfig also inherits the value
+        // from an enclosing element and falls back to configure({ payload });
+        // the click itself does not serialize surrounding form controls.
+        return dispatchAction(element, context, parsed.action, resolveActionConfig(element).payload);
     }
 
     var UNSUPPORTED_INPUT_TYPES = ['submit', 'reset', 'button', 'file', 'image'];
