@@ -8,7 +8,15 @@ use RuntimeException;
 use Sahil\Config\Repository;
 use Sahil\Container\Container;
 use Sahil\Contracts\Foundation\ApplicationContract;
+use Sahil\I18n\LangLoader;
+use Sahil\I18n\Locale;
+use Sahil\I18n\LocaleFormatter;
+use Sahil\I18n\LocaleNegotiator;
+use Sahil\I18n\RequestLocale;
+use Sahil\I18n\Translator;
+use Sahil\I18n\TranslatorContract;
 use Sahil\Support\Environment;
+use Sahil\Support\Logging\LoggerContract;
 use Throwable;
 
 /**
@@ -112,6 +120,26 @@ final class Application implements ApplicationContract
     public function isBooted(): bool
     {
         return $this->booted;
+    }
+
+    /**
+     * The locale messages are being read in: the configured application
+     * locale (`app.locale`, `sw` by default) unless the current request
+     * scope selected a different supported one.
+     */
+    public function getLocale(): string
+    {
+        return $this->container->make(Locale::class)->current();
+    }
+
+    /**
+     * Activate a supported locale for the current request scope (or for the
+     * current process operation outside one). Unknown locales are rejected —
+     * add them to `app.available_locales` first.
+     */
+    public function setLocale(string $locale): void
+    {
+        $this->container->make(Locale::class)->set($locale);
     }
 
     /**
@@ -381,6 +409,85 @@ final class Application implements ApplicationContract
         $this->container->alias('app', Application::class);
         $this->container->alias('env', Environment::class);
         $this->container->alias('config', Repository::class);
+
+        $this->installLocalizationBindings();
+    }
+
+    /**
+     * Internationalization services.
+     *
+     * The catalog loader searches the application's `lang/` directory first
+     * (`app.translations_path` when configured) and falls back to the
+     * framework's bundled `resources/lang/` so applications override
+     * framework messages key-by-key instead of replacing whole files.
+     *
+     * The active locale is per-request: {@see RequestLocale} is a scoped
+     * binding discarded when the request scope ends, which is what keeps
+     * long-running workers from leaking one request's locale into the next.
+     */
+    private function installLocalizationBindings(): void
+    {
+        $this->container->singleton(LangLoader::class, function (Container $container): LangLoader {
+            /** @var ApplicationContract $application */
+            $application = $container->make(ApplicationContract::class);
+            $configured = $application->config()->get('app.translations_path');
+            $paths = [];
+
+            $paths[] = is_string($configured) && $configured !== ''
+                ? $configured
+                : $application->basePath('lang');
+
+            $bundled = dirname(__DIR__, 2).'/resources/lang';
+
+            if (is_dir($bundled)) {
+                $paths[] = $bundled;
+            }
+
+            return new LangLoader($paths);
+        });
+
+        $this->container->scoped(RequestLocale::class);
+
+        $this->container->singleton(
+            Locale::class,
+            static fn (Container $container): Locale => new Locale($container, $container->make(Repository::class)),
+        );
+
+        $this->container->singleton(
+            LocaleNegotiator::class,
+            static fn (): LocaleNegotiator => new LocaleNegotiator(),
+        );
+
+        $this->container->singleton(
+            LocaleFormatter::class,
+            static fn (Container $container): LocaleFormatter => new LocaleFormatter($container->make(Locale::class)),
+        );
+
+        $this->container->singleton(Translator::class, function (Container $container): Translator {
+            $missing = null;
+            $config = $container->make(Repository::class);
+
+            if ($config->get('app.debug') === true && $container->bound(LoggerContract::class)) {
+                /** @var LoggerContract $logger */
+                $logger = $container->make(LoggerContract::class);
+                $missing = static function (string $key, string $locale) use ($logger): void {
+                    try {
+                        $logger->warning('Missing translation key.', ['key' => $key, 'locale' => $locale]);
+                    } catch (Throwable) {
+                        // A logging failure must never break translation.
+                    }
+                };
+            }
+
+            return new Translator(
+                $container->make(LangLoader::class),
+                $container->make(Locale::class),
+                $missing,
+            );
+        });
+
+        $this->container->alias(TranslatorContract::class, Translator::class);
+        $this->container->alias('translator', Translator::class);
     }
 
     private static function normalizePath(string $path): string

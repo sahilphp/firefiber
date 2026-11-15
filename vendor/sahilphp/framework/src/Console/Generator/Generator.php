@@ -108,41 +108,180 @@ final class Generator
     }
 
     /**
-     * @param array{force?: bool, migration?: bool} $options
+     * @param array{force?: bool, migration?: bool, controller?: bool, resource?: bool} $options
      */
     public function generate(string $type, string $name, array $options = []): GeneratorResult
     {
         $force = ($options['force'] ?? false) === true;
+        $resourceful = ($options['resource'] ?? false) === true;
 
         return match ($type) {
-            'controller', 'model', 'middleware', 'policy', 'provider', 'command', 'job' => $this->classFile(
-                $type,
+            'controller' => $this->controller($name, $force, $resourceful),
+            'model' => $this->model(
                 $name,
                 $force,
-                $type === 'model' && ($options['migration'] ?? false) === true,
+                ($options['migration'] ?? false) === true,
+                ($options['controller'] ?? false) === true || $resourceful,
+                $resourceful,
             ),
+            'middleware', 'policy', 'provider', 'command', 'job' => $this->classFile($type, $name, $force),
             'migration' => $this->migration($name, $force),
             'seeder' => $this->seeder($name, $force),
             default => throw new GeneratorException(sprintf('Unknown generator type [%s].', $type)),
         };
     }
 
-    private function classFile(string $type, string $name, bool $force, bool $withMigration): GeneratorResult
+    /**
+     * A controller — plain, or resourceful with the full action set.
+     */
+    private function controller(string $name, bool $force, bool $resourceful): GeneratorResult
+    {
+        [$class, $subNamespace] = $this->splitClassName($name);
+        $namespace = $this->namespaceFor('controller', $subNamespace);
+        [, $directory] = $this->paths->resolve($namespace);
+
+        return $this->writeAll([[
+            rtrim($directory, '/').'/'.$class.'.php',
+            $resourceful ? Stubs::resourceController($namespace, $class) : Stubs::controller($namespace, $class),
+            $class,
+            $namespace,
+        ]], $force);
+    }
+
+    /**
+     * A model plus the related files the caller asked for: its
+     * `<Model>Controller` in the matching `Http\Controllers` sub-namespace
+     * and/or the `create_<table>_table` migration.
+     */
+    private function model(string $name, bool $force, bool $withMigration, bool $withController, bool $resourceful): GeneratorResult
     {
         [$class, $subNamespace] = $this->splitClassName($name);
         $applicationNamespace = $this->paths->applicationNamespace();
-        $namespace = $applicationNamespace.'\\'.self::NAMESPACES[$type];
+
+        $plans = [];
+
+        $modelNamespace = $this->namespaceFor('model', $subNamespace);
+        [, $modelDirectory] = $this->paths->resolve($modelNamespace);
+        $plans[] = [
+            rtrim($modelDirectory, '/').'/'.$class.'.php',
+            Stubs::model($modelNamespace, $class, $this->tableName($class)),
+            $class,
+            $modelNamespace,
+        ];
+
+        if ($withController) {
+            $controllerClass = $class.'Controller';
+            $controllerNamespace = $this->namespaceFor('controller', $subNamespace);
+            [, $controllerDirectory] = $this->paths->resolve($controllerNamespace);
+            $plans[] = [
+                rtrim($controllerDirectory, '/').'/'.$controllerClass.'.php',
+                $resourceful
+                    ? Stubs::resourceController($controllerNamespace, $controllerClass)
+                    : Stubs::controller($controllerNamespace, $controllerClass),
+                $controllerClass,
+                $controllerNamespace,
+            ];
+        }
+
+        if ($withMigration) {
+            $table = $this->tableName($class);
+            $migrationName = 'create_'.$table.'_table';
+            $plans[] = [
+                $this->migrationTarget($migrationName),
+                Stubs::migrationCreate($table),
+                $migrationName,
+                null,
+            ];
+        }
+
+        return $this->writeAll($plans, $force);
+    }
+
+    /**
+     * Write a planned set of generated files as one operation.
+     *
+     * Every target is resolved and checked up front so a conflict reports the
+     * offending path without producing a partial set; if a write still fails
+     * mid-run, files this run created are removed again and pre-existing
+     * files are restored from the backups `write()` made — user files are
+     * never deleted and never left modified.
+     *
+     * @param list<array{0: string, 1: string, 2: string, 3: string|null}> $plans
+     *        [absolute target, contents, class name, namespace|null]
+     */
+    private function writeAll(array $plans, bool $force): GeneratorResult
+    {
+        foreach ($plans as [$target]) {
+            if (is_file($target) && !$force) {
+                throw new GeneratorException(sprintf(
+                    '%s already exists; pass --force to overwrite it.',
+                    $this->paths->relative($target),
+                ));
+            }
+        }
+
+        $files = [];
+        $created = [];
+        $replaced = [];
+
+        try {
+            foreach ($plans as [$target, $contents, $className, $namespace]) {
+                $existed = is_file($target);
+                $file = $this->write($target, $contents, $force, $className, $namespace);
+                $files[] = $file;
+
+                if ($existed) {
+                    $replaced[] = $file;
+                } else {
+                    $created[] = $file;
+                }
+            }
+        } catch (\Throwable $error) {
+            foreach ($created as $file) {
+                @unlink($file->path);
+            }
+
+            foreach ($replaced as $file) {
+                if ($file->backupPath !== null) {
+                    @copy($this->paths->root().'/'.$file->backupPath, $file->path);
+                }
+            }
+
+            throw $error instanceof GeneratorException
+                ? $error
+                : new GeneratorException($error->getMessage(), previous: $error);
+        }
+
+        return new GeneratorResult($files);
+    }
+
+    /**
+     * The namespace a generated class lives in: the application namespace,
+     * the type's sub-namespace and any `Nested/Name` segments.
+     *
+     * @param list<string> $subNamespace
+     */
+    private function namespaceFor(string $type, array $subNamespace): string
+    {
+        $namespace = $this->paths->applicationNamespace().'\\'.self::NAMESPACES[$type];
 
         if ($subNamespace !== []) {
             $namespace .= '\\'.implode('\\', $subNamespace);
         }
 
+        return $namespace;
+    }
+
+    private function classFile(string $type, string $name, bool $force): GeneratorResult
+    {
+        [$class, $subNamespace] = $this->splitClassName($name);
+        $applicationNamespace = $this->paths->applicationNamespace();
+        $namespace = $this->namespaceFor($type, $subNamespace);
+
         [, $directory] = $this->paths->resolve($namespace);
         $target = rtrim($directory, '/').'/'.$class.'.php';
 
         $contents = match ($type) {
-            'controller' => Stubs::controller($namespace, $class),
-            'model' => Stubs::model($namespace, $class, $this->tableName($class)),
             'middleware' => Stubs::middleware($namespace, $class),
             'policy' => Stubs::policy($namespace, $class, $this->policyModelClass($applicationNamespace, $subNamespace, $class)),
             'provider' => Stubs::provider($namespace, $class),
@@ -151,38 +290,7 @@ final class Generator
             default => throw new GeneratorException(sprintf('Unknown generator type [%s].', $type)),
         };
 
-        $migrationTarget = null;
-        $migrationName = null;
-        $table = null;
-
-        if ($withMigration) {
-            $table = $this->tableName($class);
-            $migrationName = 'create_'.$table.'_table';
-            $migrationTarget = $this->migrationTarget($migrationName);
-
-            // Preflight the second file before writing the first, so a
-            // conflict cannot leave a half-generated model behind.
-            if (is_file($migrationTarget) && !$force) {
-                throw new GeneratorException(sprintf(
-                    '%s already exists; pass --force to overwrite it.',
-                    $this->paths->relative($migrationTarget),
-                ));
-            }
-        }
-
-        $files = [$this->write($target, $contents, $force, $class, $namespace)];
-
-        if ($withMigration) {
-            $files[] = $this->writeMigration(
-                $migrationName,
-                [],
-                $force,
-                Stubs::migrationCreate($table),
-                $migrationTarget,
-            );
-        }
-
-        return new GeneratorResult($files);
+        return $this->writeAll([[$target, $contents, $class, $namespace]], $force);
     }
 
     private function migration(string $name, bool $force): GeneratorResult

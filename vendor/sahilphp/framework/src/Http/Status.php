@@ -42,6 +42,7 @@ final class Status
         414 => 'URI Too Long',
         415 => 'Unsupported Media Type',
         416 => 'Range Not Satisfiable',
+        418 => 'I\'m a Teapot',
         422 => 'Unprocessable Content',
         429 => 'Too Many Requests',
         500 => 'Internal Server Error',

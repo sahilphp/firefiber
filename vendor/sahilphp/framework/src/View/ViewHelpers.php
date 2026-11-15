@@ -190,4 +190,26 @@ final class ViewHelpers
             get_debug_type($value),
         ));
     }
+
+    /**
+     * `{{ __('messages.welcome') }}` — translate through the global helper.
+     * Outside an application the bundled framework catalog still answers
+     * (Swahili by default), so error pages always render real text.
+     *
+     * @param array<string, scalar> $replace
+     */
+    public static function translate(string $key, array $replace = [], ?string $locale = null): string
+    {
+        return __($key, $replace, $locale);
+    }
+
+    /**
+     * `{{ trans_choice('messages.items', count) }}` — pluralized message.
+     *
+     * @param array<string, scalar> $replace
+     */
+    public static function transChoice(string $key, int|float $count, array $replace = [], ?string $locale = null): string
+    {
+        return trans_choice($key, $count, $replace, $locale);
+    }
 }

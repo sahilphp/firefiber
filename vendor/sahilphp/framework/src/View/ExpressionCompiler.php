@@ -29,6 +29,9 @@ final class ExpressionCompiler
         'join' => ['method' => 'join', 'arity' => 2],
         'asset' => ['method' => 'asset', 'arity' => 1, 'context' => true],
         'csrf_field' => ['method' => 'csrfField', 'arity' => 0, 'context' => true],
+        '__' => ['method' => 'translate', 'arity' => 1, 'optional' => 2],
+        'trans' => ['method' => 'translate', 'arity' => 1, 'optional' => 2],
+        'trans_choice' => ['method' => 'transChoice', 'arity' => 2, 'optional' => 2],
     ];
 
     /** @var list<array{type: string, value: string}> */
@@ -535,16 +538,14 @@ final class ExpressionCompiler
         $this->expectPunct(')');
 
         $definition = self::FUNCTIONS[$lower];
-        $expected = $definition['arity'];
+        $minimum = $definition['arity'];
+        $maximum = $minimum + ($definition['optional'] ?? 0);
+        $given = count($arguments);
 
-        if (count($arguments) !== $expected) {
-            throw $this->error(sprintf(
-                '%s() takes exactly %d argument%s, %d given.',
-                $name,
-                $expected,
-                $expected === 1 ? '' : 's',
-                count($arguments),
-            ));
+        if ($given < $minimum || $given > $maximum) {
+            throw $this->error($minimum === $maximum
+                ? sprintf('%s() takes exactly %d argument%s, %d given.', $name, $minimum, $minimum === 1 ? '' : 's', $given)
+                : sprintf('%s() takes between %d and %d arguments, %d given.', $name, $minimum, $maximum, $given));
         }
 
         $arguments = implode(', ', $arguments);

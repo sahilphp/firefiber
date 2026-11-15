@@ -256,7 +256,7 @@ final class Validator
         if ($missing) {
             if ($required) {
                 return [
-                    'messages' => [$this->message($path, 'required', 'This field is required.')],
+                    'messages' => [$this->message($path, 'required', 'This field is required.', 'required')],
                     'hasOutputValue' => false,
                     'value' => null,
                 ];
@@ -268,7 +268,7 @@ final class Validator
 
         if ($value === '' && $required) {
             return [
-                'messages' => [$this->message($path, 'required', 'This field is required.')],
+                'messages' => [$this->message($path, 'required', 'This field is required.', 'required')],
                 'hasOutputValue' => false,
                 'value' => null,
             ];
@@ -307,7 +307,7 @@ final class Validator
             if (is_string($outcome)) {
                 if (is_string($rule)) {
                     $ruleName = explode(':', $rule, 2)[0];
-                    $outcome = $this->message($path, $ruleName, $outcome);
+                    $outcome = $this->message($path, $ruleName, $outcome, $rule);
                 }
 
                 $messages[] = $outcome;
@@ -605,13 +605,111 @@ final class Validator
     }
 
     /**
-     * Message lookup: `field.rule` → `field` → bare `rule` → default.
+     * Message lookup: `field.rule` → `field` → bare `rule` →
+     * `validation.*` catalog in an application context → default.
+     *
+     * Inside a configured application the framework's built-in messages are
+     * localized through the translator, so default validation feedback
+     * follows the active locale (Swahili out of the box). A Validator
+     * constructed outside an application keeps the English defaults.
+     *
+     * @param string $rule the full rule descriptor, for argument extraction
      */
-    private function message(string $path, string $ruleName, string $default): string
+    private function message(string $path, string $ruleName, string $default, string $rule): string
     {
-        return $this->messages[$path.'.'.$ruleName]
+        $explicit = $this->messages[$path.'.'.$ruleName]
             ?? $this->messages[$path]
             ?? $this->messages[$ruleName]
-            ?? $default;
+            ?? null;
+
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
+        return $this->translated($path, $ruleName, $default, $rule) ?? $default;
+    }
+
+    /**
+     * Ask the application's translator for the rule's localized message.
+     * Returns null when no application is configured or the key is absent,
+     * leaving the English default in place.
+     */
+    private function translated(string $path, string $ruleName, string $default, string $rule): ?string
+    {
+        $application = \Sahil\Foundation\Application::peek();
+
+        if ($application === null) {
+            return null;
+        }
+
+        $container = $application->container();
+
+        if (!$container->bound(\Sahil\I18n\TranslatorContract::class)) {
+            return null;
+        }
+
+        try {
+            /** @var \Sahil\I18n\TranslatorContract $translator */
+            $translator = $container->make(\Sahil\I18n\TranslatorContract::class);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $key = 'validation.'.$this->messageKey($ruleName, $default);
+        $translated = $translator->get($key, ['attribute' => $path] + $this->ruleParameters($rule));
+
+        return $translated === $key ? null : $translated;
+    }
+
+    /**
+     * Most rules map straight onto `validation.{rule}`; the few built-in
+     * rules with more than one failure message are disambiguated by the
+     * produced default (translation lookup only — the default stands when
+     * no key matches).
+     */
+    private function messageKey(string $ruleName, string $default): string
+    {
+        return match (true) {
+            $ruleName === 'string' && str_contains($default, 'control characters') => 'control_characters',
+            $ruleName === 'length' && str_contains($default, 'at least') => 'length.min',
+            $ruleName === 'length' => 'length.max',
+            default => $ruleName,
+        };
+    }
+
+    /**
+     * Rule arguments exposed to translated messages as `:name` placeholders.
+     *
+     * @return array<string, string>
+     */
+    private function ruleParameters(string $rule): array
+    {
+        if (str_starts_with($rule, 'min:')) {
+            return ['min' => substr($rule, 4)];
+        }
+
+        if (str_starts_with($rule, 'max:')) {
+            return ['max' => substr($rule, 4)];
+        }
+
+        if (str_starts_with($rule, 'length:')) {
+            $bounds = array_pad(explode(',', substr($rule, 7), 2), 2, '');
+
+            return array_filter(['min' => $bounds[0], 'max' => $bounds[1]], static fn (string $b): bool => $b !== '');
+        }
+
+        if (str_starts_with($rule, 'in:')) {
+            return ['values' => substr($rule, 3)];
+        }
+
+        if (str_starts_with($rule, 'notIn:')) {
+            return ['values' => substr($rule, 6)];
+        }
+
+        if (str_starts_with($rule, 'regex:')) {
+            return ['pattern' => substr($rule, 6)];
+        }
+
+        return [];
     }
 }

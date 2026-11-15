@@ -18,7 +18,7 @@ use Sahil\Http\Response;
  * that is resolved per request. This value object pairs a class-string with the
  * parameters the middleware should receive:
  *
- *     Route::get('/posts', [PostController::class, 'store'])
+ *     Link::get('/posts', [PostController::class, 'store'])
  *         ->middleware([new MiddlewareSpec(Authorize::class, ['publish-post'])]);
  *
  * Resolution happens inside the request scope (the kernel resolves route

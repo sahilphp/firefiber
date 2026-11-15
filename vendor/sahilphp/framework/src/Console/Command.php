@@ -75,6 +75,21 @@ abstract class Command
     }
 
     /**
+     * Single-letter shorthands: short character => long option name.
+     *
+     * Every shorthand must map to a flag in {@see optionSpecs()} (options
+     * that take a value are always long-form). Combined clusters expand to
+     * their members, so `['m' => 'migration', 'c' => 'controller']` makes
+     * `-cm` equivalent to `--controller --migration`.
+     *
+     * @return array<string, string>
+     */
+    public function shortOptions(): array
+    {
+        return [];
+    }
+
+    /**
      * Extra help lines for options that need more than a placeholder.
      *
      * @return list<string>
@@ -162,15 +177,20 @@ abstract class Command
         $lines[] = '  -h, --help   Show this command help.';
 
         // optionHelp() lines are the descriptive form. Track which options
-        // they document so an option is never printed twice, then append any
-        // remaining parser specs without a description.
+        // they document — including every long name on a `-x, --long` line —
+        // so an option is never printed twice, then append any remaining
+        // parser specs without a description.
         $documented = [];
 
         foreach ($this->optionHelp() as $line) {
             $lines[] = '  '.$line;
 
-            if (preg_match('/^--([A-Za-z0-9-]+)/', trim($line), $matches) === 1) {
-                $documented[$matches[1]] = true;
+            if (preg_match_all('/--([A-Za-z0-9-]+)/', $line, $matches) === false) {
+                continue;
+            }
+
+            foreach ($matches[1] as $name) {
+                $documented[$name] = true;
             }
         }
 

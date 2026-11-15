@@ -23,7 +23,7 @@ use Sahil\Firefiber\Storage\FileCacheStateStorage;
 use Sahil\Firefiber\Storage\ReplayStorageInterface;
 use Sahil\Firefiber\Storage\StateStorageInterface;
 use Sahil\Foundation\ServiceProvider;
-use Sahil\Http\Route;
+use Sahil\Routing\Link;
 use Sahil\Http\Router;
 
 /**
@@ -191,6 +191,16 @@ class FirefiberServiceProvider extends ServiceProvider
 
         $container->alias('firefiber.components', ComponentRendererContract::class);
 
+        // Unified rendering: `html` stays native, `fire` maps to the
+        // component renderer — used by `$this->fire()` / `Response::fire()`.
+        $container->singleton(
+            \Sahil\Rendering\RenderManager::class,
+            static fn (Container $container): \Sahil\Rendering\RenderManager => new \Sahil\Rendering\RenderManager([
+                new \Sahil\Rendering\Adapters\HtmlAdapter($container->make(ViewContract::class)),
+                new FireAdapter($container->make(ComponentRendererContract::class)),
+            ]),
+        );
+
         $container->singleton(
             PageRegistry::class,
             static fn (Container $container): PageRegistry => new PageRegistry(
@@ -303,14 +313,14 @@ class FirefiberServiceProvider extends ServiceProvider
 
         if ($router->routeByName(AssetRepository::ROUTE_NAME) === null) {
             $router->register(
-                Route::get($assets->routePath(), [AssetController::class, 'show'])
+                Link::get($assets->routePath(), [AssetController::class, 'show'])
                     ->name(AssetRepository::ROUTE_NAME),
             );
         }
 
         if ($router->routeByName('firefiber.action') === null) {
             $router->register(
-                Route::post($actionPath, [FirefiberActionController::class, 'handle'])
+                Link::post($actionPath, [FirefiberActionController::class, 'handle'])
                     ->middleware(FirefiberMiddleware::class)
                     ->name('firefiber.action'),
             );
@@ -318,7 +328,7 @@ class FirefiberServiceProvider extends ServiceProvider
 
         if ($router->routeByName('firefiber.uploads') === null) {
             $router->register(
-                Route::post($uploadPath, [FirefiberActionController::class, 'upload'])
+                Link::post($uploadPath, [FirefiberActionController::class, 'upload'])
                     ->middleware(FirefiberMiddleware::class)
                     ->name('firefiber.uploads'),
             );

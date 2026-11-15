@@ -6,7 +6,7 @@ namespace Sahil\Firefiber;
 
 use Sahil\Console\Generator\ApplicationPaths;
 use Sahil\Contracts\Foundation\ApplicationContract;
-use Sahil\Http\Route;
+use Sahil\Routing\Link;
 
 /**
  * Discovers application pages below `App\Firefiber\Pages`.
@@ -75,7 +75,7 @@ final class PageRegistry
             }
 
             $router->register(
-                Route::get($page->path(), [$page::class, 'show'])->name($name),
+                Link::get($page->path(), [$page::class, 'show'])->name($name),
             );
         }
     }

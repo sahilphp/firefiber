@@ -10,6 +10,7 @@ use Sahil\Contracts\Foundation\ApplicationContract;
 use Sahil\Frontend\FrontendRenderer;
 use Sahil\Frontend\InvalidFrontendConfigurationException;
 use Sahil\Http\Exception\HttpException;
+use Sahil\Http\Exception\UnsupportedMediaTypeHttpException;
 use Sahil\Http\Middleware\MiddlewareContract;
 use Sahil\Http\Middleware\MiddlewareSpec;
 use Throwable;
@@ -24,8 +25,10 @@ use Throwable;
  *     bindings resolve; they are dropped when the scope ends, even on
  *     error paths), and
  *   - every exception is converted to a safe response: `HttpException`s
- *     keep their status/headers; everything else becomes 500 (message
- *     only in debug mode, installation paths never leak).
+ *     keep their status/headers; everything else becomes 500. Browsers get a
+ *     designed HTML error page, machine clients keep the JSON contract (see
+ *     {@see ErrorRenderer}); messages appear only in debug mode and
+ *     installation paths never leak.
  *
  * The kernel stays reentrant: consecutive `handle()` calls in one process
  * (worker simulation) produce fully isolated request lifecycles.
@@ -35,10 +38,12 @@ final class Kernel
     /** @var list<MiddlewareContract> global (outermost-first) middleware */
     private array $globalMiddleware = [];
 
-    /** @var callable(Throwable): ?Response|null */
+    /** @var callable(Throwable, Request): ?Response|null */
     private $exceptionHandler = null;
 
     private bool $debug = false;
+
+    private ?ErrorRenderer $errorRenderer = null;
 
     public function __construct(
         private readonly Router $router,
@@ -69,12 +74,12 @@ final class Kernel
      *
      * Middleware and handler exceptions unwind through the pipeline (in
      * reverse registration order, running every `finally` and finalize
-     * block) and are then handed to this callable. If it returns a
-     * Response, that response is emitted; returning null falls back to the
-     * kernel's built-in safe rendering (HttpException status, otherwise a
-     * debug-aware 500 without leaking internals).
+     * block) and are then handed to this callable with the failing request
+     * (a handler that only needs the throwable can ignore it). If it returns
+     * a Response, that response is emitted; returning null falls back to the
+     * kernel's built-in rendering (see {@see ErrorRenderer}).
      *
-     * @param callable(Throwable): ?Response $handler
+     * @param callable(Throwable, Request): ?Response $handler
      */
     public function usingExceptionHandler(callable $handler): self
     {
@@ -90,24 +95,29 @@ final class Kernel
     public function handle(Request $request): Response
     {
         return $this->application->isolatedRequest(function () use ($request): Response {
-            // Validate content type: reject unsupported types with 415,
-            // allow requests without a content type, and allow JSON/form data.
-            // Compare the media type only: real requests carry parameters
-            // (`multipart/form-data; boundary=…`, `application/json; charset=utf-8`).
-            $contentType = $request->mediaType();
-            if ($contentType !== null && !
-                in_array($contentType, ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data'], true)
-            ) {
-                return Response::json(['error' => 'unsupported_media_type'], 415)
-                    ->withHeader('Content-Type', 'application/json');
-            }
-
             try {
+                // Reject unsupported content types with 415; requests without a
+                // content type and JSON/form bodies are allowed. Compare the
+                // media type only: real requests carry parameters
+                // (`multipart/form-data; boundary=…`, `application/json; charset=utf-8`).
+                $contentType = $request->mediaType();
+                if ($contentType !== null && !
+                    in_array($contentType, ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data'], true)
+                ) {
+                    // The long-standing machine-readable 415 payload is kept as
+                    // is; a browser gets the HTML page instead.
+                    if (ErrorRenderer::expectsJson($request)) {
+                        return Response::json(['error' => 'unsupported_media_type'], 415);
+                    }
+
+                    throw new UnsupportedMediaTypeHttpException();
+                }
+
                 return $this->finalizeFrontend($this->runPipeline($request));
             } catch (HttpException $exception) {
-                return $this->handleRendered($this->renderHttpException($exception), $exception);
+                return $this->handleRendered($this->renderError($exception, $request), $exception, $request);
             } catch (Throwable $throwable) {
-                return $this->handleRendered($this->renderThrowable($throwable), $throwable);
+                return $this->handleRendered($this->renderError($throwable, $request), $throwable, $request);
             }
         });
     }
@@ -143,14 +153,63 @@ final class Kernel
     /**
      * Give the application exception handler (when installed) the chance
      * to replace the built-in rendering; a null return keeps the fallback.
+     *
+     * A handler that itself throws — a dead log sink, a broken custom
+     * renderer — must not escape the request lifecycle while an error is
+     * already being reported, so any failure here degrades to the built-in
+     * response instead of becoming a second uncaught exception.
      */
-    private function handleRendered(Response $fallback, Throwable $throwable): Response
+    private function handleRendered(Response $fallback, Throwable $throwable, Request $request): Response
     {
         if ($this->exceptionHandler === null) {
             return $fallback;
         }
 
-        return ($this->exceptionHandler)($throwable) ?? $fallback;
+        try {
+            return ($this->exceptionHandler)($throwable, $request) ?? $fallback;
+        } catch (Throwable $handlerFailure) {
+            // A handler may deliberately rethrow the original throwable (the
+            // test kit's withoutExceptionHandling() relies on that); that is
+            // honored. Any *other* failure — a dead log sink, a broken custom
+            // renderer — degrades to the built-in response instead of
+            // escaping the request lifecycle as a second uncaught exception.
+            if ($handlerFailure === $throwable) {
+                throw $handlerFailure;
+            }
+
+            return $fallback;
+        }
+    }
+
+    /**
+     * Render the throwable, with a last-resort answer when even the error
+     * pipeline fails: rendering an error must never raise a second one, so
+     * the worst possible outcome is the bare JSON contract instead of an
+     * exception escaping {@see handle()}.
+     */
+    private function renderError(Throwable $throwable, Request $request): Response
+    {
+        try {
+            return $this->errorRenderer()->respond($throwable, $request, $this->debug);
+        } catch (Throwable) {
+            $status = ExceptionDiagnostics::status($throwable);
+
+            return Response::json(
+                $throwable instanceof HttpException
+                    ? ['error' => 'http_error', 'status' => $status]
+                    : ['error' => 'server_error', 'message' => 'An unexpected server error occurred.'],
+                $status,
+            );
+        }
+    }
+
+    /**
+     * The renderer is built on first failure only: a booted application that
+     * never throws pays no view/cache setup cost.
+     */
+    private function errorRenderer(): ErrorRenderer
+    {
+        return $this->errorRenderer ??= ErrorRenderer::fromContainer($this->container);
     }
 
     /**
@@ -158,10 +217,28 @@ final class Kernel
      */
     private function runPipeline(Request $request): Response
     {
-        $match = $this->router->match($request);
+        // Global middleware wraps the whole dispatch — including route
+        // matching — so request-level concerns (sessions, CSRF, locale
+        // selection) apply to error responses for unmatched paths too.
+        $dispatch = function () use ($request): Response {
+            $match = $this->router->match($request);
 
-        $pipeline = fn (): Response => $this->dispatchHandler($request, $match);
+            return self::pipelineRunner(
+                fn (): Response => $this->dispatchHandler($request, $match),
+                $this->routeMiddleware($match),
+            )($request);
+        };
 
+        return self::pipelineRunner($dispatch, $this->globalMiddleware)($request);
+    }
+
+    /**
+     * Resolve the matched route's middleware specs into instances.
+     *
+     * @return list<MiddlewareContract> outermost-first
+     */
+    private function routeMiddleware(RouteMatch $match): array
+    {
         /** @var list<MiddlewareContract> $stack outermost-first */
         $stack = [];
 
@@ -192,9 +269,7 @@ final class Kernel
             $stack[] = $resolved;
         }
 
-        $inner = self::pipelineRunner($pipeline, [...$this->globalMiddleware, ...$stack]);
-
-        return $inner($request);
+        return $stack;
     }
 
     /**
@@ -236,27 +311,5 @@ final class Kernel
         }
 
         return $response;
-    }
-
-    private function renderHttpException(HttpException $exception): Response
-    {
-        $payload = [
-            'error' => 'http_error',
-            'status' => $exception->statusCode(),
-            'message' => $this->debug ? $exception->getMessage() : null,
-        ];
-
-        return Response::json(array_filter($payload, static fn (mixed $v): bool => $v !== null), $exception->statusCode())
-            ->withHeaders($exception->getHeaders());
-    }
-
-    private function renderThrowable(Throwable $throwable): Response
-    {
-        return Response::json($this->debug
-            ? [
-                'error' => 'server_error',
-                'message' => $throwable->getMessage(),
-            ]
-            : ['error' => 'server_error'], 500);
     }
 }

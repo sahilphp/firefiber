@@ -27,15 +27,18 @@ final class GeneratorCommand extends Command
             'argument' => '<Name>',
             'examples' => [
                 'php sahil unda:controller UserController',
-                'php sahil unda:controller Admin/UserController',
+                'php sahil unda:controller UserController --resources',
+                'php sahil unda:controller Admin/UserController -r',
             ],
         ],
         'model' => [
-            'description' => 'Create an ORM model (optionally with its migration).',
+            'description' => 'Create an ORM model (optionally with its migration and controller).',
             'argument' => '<Name>',
             'examples' => [
                 'php sahil unda:model User',
-                'php sahil unda:model Billing/Invoice --migration',
+                'php sahil unda:model User -cm',
+                'php sahil unda:model User -cmr',
+                'php sahil unda:model Billing/Invoice --controller --migration --resource',
             ],
         ],
         'migration' => [
@@ -117,9 +120,28 @@ final class GeneratorCommand extends Command
 
         if ($this->type === 'model') {
             $options['migration'] = null;
+            $options['controller'] = null;
+            $options['resource'] = null;
+        }
+
+        if ($this->type === 'controller') {
+            $options['resources'] = null;
+            $options['resource'] = null;
         }
 
         return $options;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function shortOptions(): array
+    {
+        return match ($this->type) {
+            'model' => ['m' => 'migration', 'c' => 'controller', 'r' => 'resource'],
+            'controller' => ['r' => 'resources'],
+            default => [],
+        };
     }
 
     /**
@@ -133,7 +155,15 @@ final class GeneratorCommand extends Command
         ];
 
         if ($this->type === 'model') {
-            $lines[] = '--migration      Also create create_<table>_table for this model.';
+            $lines[] = '-m, --migration  Also create create_<table>_table for this model.';
+            $lines[] = '-c, --controller Also create <Name>Controller.';
+            $lines[] = '-r, --resource   Create the controller as a resourceful one (implies --controller).';
+            $lines[] = 'Combined shorthands: -cm = --controller --migration; -cmr adds --resource.';
+        }
+
+        if ($this->type === 'controller') {
+            $lines[] = '-r, --resources  Generate a resourceful controller (index, create, store,';
+            $lines[] = '                 show, edit, update, destroy). --resource is an alias.';
         }
 
         return $lines;
@@ -172,6 +202,8 @@ final class GeneratorCommand extends Command
             $result = (new Generator($root))->generate($this->type, $name, [
                 'force' => $input->flag('force'),
                 'migration' => $input->flag('migration'),
+                'controller' => $input->flag('controller'),
+                'resource' => $input->flag('resource') || $input->flag('resources'),
             ]);
         } catch (GeneratorException $error) {
             throw new \Sahil\Console\ConsoleException($error->getMessage());

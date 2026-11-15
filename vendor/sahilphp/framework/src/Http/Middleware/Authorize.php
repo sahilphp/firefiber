@@ -20,7 +20,7 @@ use Sahil\Http\Response;
  * Two registration forms are supported:
  *
  *     // route parameters (resolved through a MiddlewareSpec)
- *     Route::get('/posts', [PostController::class, 'store'])
+ *     Link::get('/posts', [PostController::class, 'store'])
  *         ->middleware([new MiddlewareSpec(Authorize::class, ['publish-post'])]);
  *
  *     // direct invocation (existing behaviour)

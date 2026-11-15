@@ -147,7 +147,7 @@ final class Application
             $command->bindApplication($this->boot());
         }
 
-        $input = CommandInput::parse($tokens, $command->optionSpecs());
+        $input = CommandInput::parse($tokens, $command->optionSpecs(), $command->shortOptions());
 
         return $command->execute($input, $output);
     }
@@ -374,6 +374,7 @@ final class Application
         $this->register(new Commands\NewCommand());
 
         $this->register(new Commands\UiSetupCommand());
+        $this->register(new Commands\ErrorPublishCommand());
 
         foreach (['ui:install', 'ui:dev', 'ui:build', 'ui:status', 'ui:theme'] as $name) {
             $this->register(new Commands\UiCommand($name));

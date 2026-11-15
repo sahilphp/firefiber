@@ -46,9 +46,10 @@ composer create-project sahilphp/sahilphp my-app
 
 This package is a Composer **library** (`"type": "library"`): source under
 `src/` and a test suite under `tests/`. It is not an application skeleton. No
-front controller, CLI binary, configuration, routes, templates or storage
-directory ships with it — the application that requires the package wires
-those itself.
+front controller, CLI binary, configuration, routes or storage directory ships
+with it — the application that requires the package wires those itself. The
+only templates it ships are the built-in error pages, which are rendered by
+the package and only copied into an application when asked for.
 
 ### This package
 
@@ -56,6 +57,7 @@ those itself.
 |------|---------|
 | `src/` | Framework source, autoloaded as `Sahil\` (`autoload.psr-4`) |
 | `src/Support/helpers.php` | Global helper functions, autoloaded through `autoload.files` |
+| `resources/views/errors/` | Built-in error pages, published with `php sahil error:publish` |
 | `tests/` | PHPUnit suite, autoloaded as `Sahil\Tests\` (`autoload-dev`) |
 | `phpunit.xml` | PHPUnit configuration used by `composer test` |
 | `composer.json` | Package manifest: requirements, autoloading, quality-gate scripts |
@@ -457,10 +459,12 @@ never belong inside the repository (see `.env.example` — copy to a local
 **Centralized exception handling**
 (`Sahil\Foundation\CentralExceptionHandler`): one `report()` (logs with
 matching severity: `warning` for HTTP errors, `error` for real faults)
-and one `render()` (`HttpException`s keep status + headers; anything else
-renders `{"error":"server_error"}`; debug messages only when explicitly
-enabled; stack traces and paths never reach clients in any mode). It is
-installed on the kernel by `App\Providers\ObservabilityProvider`, which
+and one `render()` (`Sahil\Http\ErrorRenderer`): browsers get a designed
+HTML error page for the status, machine clients keep
+`{"error":"http_error","status":404}` / `{"error":"server_error"}`,
+`HttpException`s keep status + headers, and debug messages only appear when
+explicitly enabled; stack traces and paths never reach clients in any mode.
+It is installed on the kernel by `App\Providers\ObservabilityProvider`, which
 is distinguishable from HTTP errors at the API level: configuration
 failures occur before requests can dispatch.
 
@@ -472,6 +476,38 @@ failures occur before requests can dispatch.
   variables or runs with visible diagnostics,
 - `--help` / `--version` — legacy options are retained.
 
+**Code generation** is owned by the framework console (`Sahil\Console`) and
+uses the native `unda:` namespace. Every generator shares
+`Sahil\Console\Generator\Generator`: application-root detection, PSR-4
+namespace resolution from the consuming application's `composer.json`,
+name validation, existing-file protection, backups and `php -l` checks all
+live in one place. The application only ships the minimal `sahil` entry point
+and its `bootstrap/` manifest; command classes are loaded from this package.
+
+```bash
+php sahil unda:controller UserController
+php sahil unda:controller UserController -r      # resourceful controller
+php sahil unda:model Billing/Invoice --migration
+php sahil unda:model User -cmr                  # model + migration + resourceful controller
+php sahil unda:migration create_posts_table
+php sahil unda:middleware Authenticate
+php sahil unda:policy UserPolicy
+php sahil unda:provider PaymentServiceProvider
+php sahil unda:command SendInvoice
+php sahil unda:job ProcessPayment
+php sahil unda:seeder UserSeeder
+```
+
+`unda:model` composes related files in one run: `-m`/`--migration` adds the
+`create_<table>_table` migration, `-c`/`--controller` adds `<Name>Controller`
+and `-r`/`--resource` makes that controller resourceful (`index`, `create`,
+`store`, `show`, `edit`, `update`, `destroy`). Shorthand letters combine
+(`-cm`, `-cmr`) and every destination is preflighted before anything is
+written, so a conflict never leaves a partial set behind.
+
+Application-specific commands are opt-in through `bootstrap/commands.php`
+(a list of command class names), never by copying framework command files.
+
 ## HTTP kernel & routing (Phase 4)
 
 The kernel lives in `src/Http/Kernel.php`: one `handle(Request): Response`
@@ -481,14 +517,46 @@ and exception→response rendering — inside a single request scope
 (`scoped()` services resolve during the request and are dropped when the
 scope ends, even on error paths).
 
-**Routes** are declared in `routes/web.php` as an array of `Sahil\Http\Route`
-objects, registered by `App\Providers\WebRoutesProvider`:
+**Routes** are declared in `routes/web.php` as an array of `Sahil\Routing\Link`
+definitions, registered by `App\Providers\WebRoutesProvider`:
 
 ```php
-Route::get('/users/{id}', [UserController::class, 'show'])->name('users.show');
-Route::get('/posts/{slug?}', fn (Request $r) => Response::json([...]));
-Route::post('/files/{path:\d+}', ...)->middleware(ThrottleMiddleware::class);
+use Sahil\Routing\Link;
+
+Link::get('/users/{id}', [UserController::class, 'show'])->name('users.show');
+Link::get('/posts/{slug?}', fn (Request $r) => Response::json([...]));
+Link::post('/files/{path:\d+}', ...)->middleware(ThrottleMiddleware::class);
 ```
+
+`Link` exposes one static factory per HTTP verb — `get`, `post`, `put`,
+`patch`, `delete`, `options` — plus `any($path, $handler)` for every
+supported verb and `match(array $methods, $path, $handler)` for an explicit
+set. Each factory returns an immutable link definition; `->name(...)` and
+`->middleware(...)` return clones, so a link cannot be mutated after it has
+been registered or shared.
+
+For groups, `Link::prefix('/admin')` returns a fluent `LinkGroup`:
+
+```php
+return [
+    Link::get('/', $home),
+    ...Link::prefix('/admin')
+        ->middleware(Authenticate::class)
+        ->group(fn () => [
+            Link::get('/dashboard', $dashboard),
+            Link::get('/users', $users),
+        ]),
+];
+```
+
+`Link::group($prefix, $definition, $middleware)` is the equivalent one-call
+form. Both delegate to the real `Router::group()` rebasing machinery —
+prefixes and inherited middleware behave exactly as in `Router::group()`.
+
+The earlier `Sahil\Http\Route` class remains as a deprecated compatibility
+alias that extends `Link`; both names produce definitions consumed by the
+same `Router`, share one route registry, and behave identically. New code
+should use `Link`.
 
 - Path syntax: static segments, `{param}` (one segment, URL-decoded),
   `{param:pattern}` (PCRE fragment, validated at registration) and a
@@ -517,8 +585,11 @@ Nested bare-root routes (`/` inside a group) are rejected loudly.
 **Middleware** implements
 `Sahil\Http\Middleware\MiddlewareContract::handle(Request, Closure $next):
 Response`. Global middleware is attached with `Kernel::using(...)`
-(outermost first); per-route middleware with `Route::middleware()`;
-group middleware with `Router::group(..., middleware: ...)`. Middleware
+(outermost first) and wraps the whole dispatch — it runs before route
+matching, so concerns like sessions, CSRF and locale selection also apply
+to 404/405 responses for unmatched paths. Per-route middleware attaches
+with `Link::middleware()`; group middleware with
+`Router::group(..., middleware: ...)` or `Link::prefix(...)->middleware(...)`. Middleware
 may short-circuit by returning a response without calling `$next()` — the
 rest of the pipeline (and dispatch) is then skipped. Middleware executed
 in registration order and unwinds in reverse order after the handler
@@ -528,12 +599,33 @@ through the DI container.
 
 **Exception handling.** Middleware and handler exceptions unwind through
 the pipeline (finalize/`finally` code runs) and reach the kernel:
-`Kernel::usingExceptionHandler(callable(Throwable): ?Response)` gets the
-first chance; returning null (or not installing one) makes the kernel fall
-back to built-in rendering — `HttpException`s keep status/headers
-(message only in debug mode), any other throwable renders a plain
-`{"error":"server_error"}` 500 — in debug mode the exception message is
-added, but paths/stack traces never reach the client.
+`Kernel::usingExceptionHandler(callable(Throwable, Request): ?Response)` gets
+the first chance; returning null (or not installing one) makes the kernel
+fall back to built-in rendering — `HttpException`s keep status/headers and
+any other throwable becomes a 500; in debug mode the message is added, but
+stack traces never reach the client.
+
+**Error pages.** `Sahil\Http\ErrorRenderer` decides the response body from
+the request: a browser gets a designed, self-contained page for the status
+(`400`, `401`, `403`, `404`, `405`, `419`, `429`, `500`, `503`, plus generic
+`4xx`/`5xx` groups), while `Accept: application/json`, a JSON request body or
+`X-Requested-With: XMLHttpRequest` keeps the stable JSON contract. Pages are
+rendered through the template engine, and a template failure — the storage
+directory may be exactly what is broken during a 500 — degrades to a built-in
+page, so an error is never replaced by a blank body or a JSON dump.
+
+The pages ship with the framework, not with your project, so they cannot rot
+in an application that never customizes them. Publish them when you want your
+own copy or design:
+
+```bash
+php sahil error:publish            # resources/views/errors/*.sahil.php
+php sahil error:publish --force    # replace pages you already edited
+```
+
+Application view roots are searched before the framework's, so a published
+`errors/404.sahil.php` (or the shared `errors/layout.sahil.php`) takes over
+without touching the package.
 
 ## Validation & form handling (Phase 6)
 
@@ -604,6 +696,124 @@ Contract highlights:
   collisions; malformed JSON keeps the request object's
   `BadRequestHttpException`). The payload is RAW input — only
   `result->data()` may be trusted downstream.
+
+## Internationalization & localization (i18n/l10n)
+
+SahilPHP is multilingual by default. The framework default locale is
+**Kiswahili (`sw`)** — framework-owned messages (validation, auth,
+pagination, error pages, generic notices) ship in Swahili and English,
+and applications can add any number of further locales.
+
+**Configuration** lives in `config/app.php` of the application:
+
+```php
+'locale'           => env('APP_LOCALE', 'sw'),
+'fallback_locale'  => env('APP_FALLBACK_LOCALE', 'sw'),
+'available_locales' => array_filter(
+    array_map('trim', explode(',', env('APP_AVAILABLE_LOCALES', 'sw,en'))),
+),
+```
+
+`locale` is the application default, `fallback_locale` is consulted when a
+key is missing in the active locale, and `available_locales` is the
+allow-list — requests can never activate a locale outside it, so
+`?lang=de` on a `sw,en` install degrades safely to the default.
+
+**Translation files** are PHP arrays under `lang/{locale}/{group}.php`,
+loaded by `Sahil\I18n\LangLoader`:
+
+```text
+lang/
+├── sw/  messages.php  validation.php  auth.php  errors.php  pagination.php
+└── en/  messages.php  validation.php  auth.php  errors.php  pagination.php
+```
+
+```php
+// lang/sw/messages.php
+return [
+    'welcome'      => 'Karibu kwenye programu yetu.',
+    'welcome_user' => 'Karibu, :name!',
+    'users'        => ['one' => 'Mtumiaji :count', 'other' => 'Watumiaji :count'],
+];
+```
+
+Application catalogs are searched before the framework's bundled
+`resources/lang` and merge key-by-key — an app may override
+`messages.welcome` without losing the framework's remaining `messages.*`.
+
+**Retrieving messages** uses the `__()`, `trans()` and `trans_choice()`
+helpers (or `translator()` / the `TranslatorContract` service):
+
+```php
+__('messages.welcome');                       // 'Karibu kwenye programu yetu.'
+__('messages.welcome_user', ['name' => 'Idrisa']); // 'Karibu, Idrisa!'
+trans('auth.failed');                         // same lookup, alias
+trans_choice('messages.users', 3);            // 'Watumiaji 3' (sw plural rules)
+```
+
+- Keys are `group.dotted.path`; nested arrays resolve (`auth.password.reset`).
+- `:name` placeholders interpolate from the replacement array; unreplaced
+  placeholders pass through untouched (no exception, no eval — values are
+  plain string substitution).
+- Missing keys consult the fallback locale, then return the key itself —
+  never a crash, never an unrelated value. Malformed catalog files are
+  skipped, not fatal.
+- `trans_choice` uses CLDR-style locale-aware plural rules: Swahili `0/1`
+  are `one`, English `1` is `one`; keyed arrays (`['one' => ..., 'other' => ...]`),
+  pipe syntax (`'moja|zaidi'`), exact selectors `{0}` and intervals
+  `[2,*]` are all supported.
+
+**Active locale** is managed by `Sahil\I18n\Locale` /
+`Application::getLocale()`/`setLocale()`:
+
+```php
+app()->getLocale();   // 'sw'
+app()->setLocale('en'); // throws on unsupported; use setIfSupported() to ignore
+Locale::current();
+```
+
+Inside a request the locale lives in a **request-scoped** `RequestLocale`
+binding: `Kernel::handle()` wraps dispatch in `Application::isolatedRequest()`,
+so the selection is dropped when the scope ends — long-running workers
+(PHP-FPM pools, queue workers, the dev server) cannot leak a previous
+request's locale into the next. Outside any scope a process-level slot
+serves CLI commands.
+
+**Request locale selection** is the job of
+`Sahil\Http\Middleware\SetLocale` (registered as global middleware in the
+starter's provider, after `StartSession`). Precedence:
+
+1. `?lang=xx` (parameter name configurable) — validated, persisted to the
+   session when one is active;
+2. the stored session preference;
+3. `Accept-Language` negotiation (quality-weighted, exact then base-
+   language matching — `en-US` can satisfy an `en` install; disable with
+   `app.locale_negotiate = false`);
+4. the configured default locale.
+
+Because global middleware runs before route matching, locale selection
+also applies to localized error pages for unmatched paths.
+
+**Validation messages** localize automatically: inside an application the
+`Validator` asks the translator for `validation.*` entries, so rules render
+in the active locale; explicit per-field messages always win.
+
+**Error pages** render in the resolved locale — `errors.*` keys drive the
+designed status pages, and the built-in fallback page translates through
+the same safe lookup that can never itself throw.
+
+**Formatting** is separate from translation: `Sahil\I18n\LocaleFormatter`
+(resolved through the container) uses `intl` when the extension is present
+— `NumberFormatter`, `IntlDateFormatter` — and plain-PHP fallbacks
+otherwise:
+
+```php
+$fmt = $container->make(LocaleFormatter::class);
+$fmt->number(12345.6);        // per-locale separators
+$fmt->currency(1500, 'TZS');  // currency is explicit — never assumed
+$fmt->date($ts); $fmt->time($ts); $fmt->datetime($ts);
+// every method accepts an optional $locale override
+```
 
 ## Database layer (Phase 7)
 
@@ -1131,9 +1341,11 @@ final class SendWelcomeEmail extends Job
     {
     }
 
-    public function handle(): void
+    public function handle(): mixed
     {
         // send the welcome email
+
+        return null;
     }
 
     public function maxAttempts(): ?int

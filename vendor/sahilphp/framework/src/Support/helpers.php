@@ -139,3 +139,74 @@ if (!function_exists('csrf_token')) {
         return $session->token();
     }
 }
+
+if (!function_exists('translator')) {
+    /**
+     * Resolve the application's translation service.
+     *
+     * Without a configured application (standalone renderer, early boot
+     * failures) a minimal translator over the bundled framework catalog is
+     * served instead — framework-owned messages still resolve in the `sw`
+     * framework default rather than collapsing to raw keys.
+     */
+    function translator(): Sahil\I18n\TranslatorContract
+    {
+        $application = Application::peek();
+
+        if ($application !== null) {
+            /** @var Sahil\I18n\TranslatorContract $translator */
+            $translator = $application->container()->get(Sahil\I18n\TranslatorContract::class);
+
+            return $translator;
+        }
+
+        static $standalone = null;
+
+        return $standalone ??= new Sahil\I18n\Translator(
+            new Sahil\I18n\LangLoader([dirname(__DIR__, 2).'/resources/lang']),
+            new Sahil\I18n\Locale(new Sahil\Container\Container(), new Repository([])),
+        );
+    }
+}
+
+if (!function_exists('__')) {
+    /**
+     * Translate a message key for the active locale.
+     *
+     * `__('messages.welcome')`, `__('auth.login_success')` and
+     * `__('validation.required', ['attribute' => 'email'])` all work; a
+     * missing key falls back to the configured fallback locale and, when it
+     * is absent everywhere, returns the key itself.
+     *
+     * @param array<string, scalar> $replace
+     */
+    function __(string $key, array $replace = [], ?string $locale = null): string
+    {
+        return translator()->get($key, $replace, $locale);
+    }
+}
+
+if (!function_exists('trans')) {
+    /**
+     * Translate a message key — identical to {@see __()}.
+     *
+     * @param array<string, scalar> $replace
+     */
+    function trans(string $key, array $replace = [], ?string $locale = null): string
+    {
+        return translator()->get($key, $replace, $locale);
+    }
+}
+
+if (!function_exists('trans_choice')) {
+    /**
+     * Translate a message picking its plural form for the active locale's
+     * plural rules. `:count` is always replaceable.
+     *
+     * @param array<string, scalar> $replace
+     */
+    function trans_choice(string $key, int|float $count, array $replace = [], ?string $locale = null): string
+    {
+        return translator()->choice($key, $count, $replace, $locale);
+    }
+}

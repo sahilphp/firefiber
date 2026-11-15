@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Sahil\Http\Exception\MethodNotAllowedHttpException;
 use Sahil\Http\Exception\NotFoundHttpException;
 use Sahil\Http\Middleware\MiddlewareContract;
+use Sahil\Routing\Link;
 
 /**
  * Route table and matching engine.
@@ -23,16 +24,16 @@ use Sahil\Http\Middleware\MiddlewareContract;
  */
 final class Router
 {
-    /** @var list<Route> */
+    /** @var list<Link> */
     private array $routes = [];
 
-    /** @var array<string, Route> routeName → route */
+    /** @var array<string, Link> routeName → route */
     private array $named = [];
 
     /**
-     * @param Route ...$routes register one or more routes
+     * @param Link ...$routes register one or more routes
      */
-    public function register(Route ...$routes): self
+    public function register(Link ...$routes): self
     {
         foreach ($routes as $route) {
             if ($route->routeName() !== null) {
@@ -98,7 +99,7 @@ final class Router
      *
      * @param list<MiddlewareContract|class-string> $groupMiddleware
      */
-    private static function rebase(Route $route, string $prefix, array $groupMiddleware): Route
+    private static function rebase(Link $route, string $prefix, array $groupMiddleware): Link
     {
         if ($route->path() === '/') {
             throw new InvalidArgumentException(
@@ -156,7 +157,7 @@ final class Router
     /**
      * Every registered route, in registration order.
      *
-     * @return list<Route>
+     * @return list<Link>
      */
     public function routes(): array
     {
@@ -168,7 +169,7 @@ final class Router
         return count($this->routes);
     }
 
-    public function routeByName(string $name): ?Route
+    public function routeByName(string $name): ?Link
     {
         return $this->named[$name] ?? null;
     }
@@ -237,7 +238,7 @@ final class Router
     /**
      * Compile a concrete request path against every registered template.
      *
-     * @return list<array{0: Route, 1: array<string, string>}>
+     * @return list<array{0: Link, 1: array<string, string>}>
      */
     private function compileMatchable(string $path): array
     {

@@ -28,8 +28,10 @@ final class CommandInput
     /**
      * @param list<string> $tokens arguments after the command name
      * @param array<string, string|null> $specs option name => value placeholder, null for flags
+     * @param array<string, string> $shorts single-letter shorthand => long option name;
+     *        every letter of a `-xyz` cluster is expanded, so `-cm` is two flags
      */
-    public static function parse(array $tokens, array $specs): self
+    public static function parse(array $tokens, array $specs, array $shorts = []): self
     {
         $arguments = [];
         $options = [];
@@ -38,11 +40,19 @@ final class CommandInput
             $token = (string) $tokens[$index];
 
             // `-n` is the conventional short form of --no-interaction.
-            if ($token === '-n') {
+            if ($token === '-n' && !array_key_exists('n', $shorts)) {
                 $token = '--no-interaction';
             }
 
             if (!str_starts_with($token, '--')) {
+                if (str_starts_with($token, '-') && strlen($token) > 1 && $shorts !== []
+                    && preg_match('/^-[A-Za-z]+$/', $token) === 1
+                ) {
+                    self::expandShortCluster($token, $shorts, $specs, $options);
+
+                    continue;
+                }
+
                 if ($token !== '') {
                     $arguments[] = $token;
                 }
@@ -92,6 +102,36 @@ final class CommandInput
         }
 
         return new self($arguments, $options, array_values($tokens));
+    }
+
+    /**
+     * Expand a `-xyz` token into its long-form flags. Every letter must map
+     * to a declared flag; an unknown letter or a shorthand bound to an
+     * option that takes a value fails loudly instead of being ignored.
+     *
+     * @param array<string, string> $shorts
+     * @param array<string, string|null> $specs
+     * @param array<string, string> $options
+     */
+    private static function expandShortCluster(string $token, array $shorts, array $specs, array &$options): void
+    {
+        foreach (str_split(substr($token, 1)) as $letter) {
+            if (!array_key_exists($letter, $shorts)) {
+                throw new ConsoleException(sprintf('unknown option [-%s].', $letter));
+            }
+
+            $name = $shorts[$letter];
+
+            if (!array_key_exists($name, $specs) || $specs[$name] !== null) {
+                throw new ConsoleException(sprintf(
+                    'unknown option [-%s]: shorthand for --%s is not a flag.',
+                    $letter,
+                    $name,
+                ));
+            }
+
+            $options[$name] = '1';
+        }
     }
 
     /**

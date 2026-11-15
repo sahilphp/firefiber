@@ -790,6 +790,35 @@ final class AdvancedCapabilityTest extends TestCase
         self::assertStringContainsString('Too many uploaded files', $payload['errors']['avatar'][0]);
     }
 
+    public function test_upload_max_files_caps_the_field_across_successive_requests(): void
+    {
+        $harness = $this->harness();
+        $snapshot = $this->snapshotFromHtml($this->renderHtml($harness['renderer'], [new AdvancedTableComponent()]));
+
+        // The first file occupies the field's only slot (maxFiles = 1).
+        $first = $this->upload($harness, $snapshot, AdvancedTableComponent::class, 'avatar', $this->pngFileEntry('a.png'));
+        self::assertSame(200, $first['status']);
+        $accepted = $this->decodeResult($first);
+        self::assertCount(1, $accepted['snapshot']['state']['uploads']);
+
+        // A file input delivers files one change event at a time, so counting
+        // only the incoming request would let the staged list grow without
+        // bound. The second single-file request is refused against the fresh,
+        // authoritative snapshot.
+        $second = $this->upload($harness, $accepted['snapshot'], AdvancedTableComponent::class, 'avatar', $this->pngFileEntry('b.png'));
+        self::assertSame(422, $second['status']);
+        $payload = $this->decodeResult($second);
+        self::assertSame(Protocol::ERROR_VALIDATION, $payload['errorCode']);
+        self::assertStringContainsString('Too many uploaded files', $payload['errors']['avatar'][0]);
+
+        // The refusal adds nothing: the field still holds exactly one record,
+        // so a further attempt is refused for the same reason.
+        $third = $this->upload($harness, $accepted['snapshot'], AdvancedTableComponent::class, 'avatar', $this->pngFileEntry('c.png'));
+        self::assertSame(422, $third['status']);
+        self::assertStringContainsString('Too many uploaded files', $this->decodeResult($third)['errors']['avatar'][0]);
+        self::assertCount(1, $accepted['snapshot']['state']['uploads']);
+    }
+
     public function test_upload_rejects_unknown_fields_and_invalid_csrf(): void
     {
         $harness = $this->harness();

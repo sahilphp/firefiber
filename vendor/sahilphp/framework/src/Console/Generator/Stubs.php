@@ -50,6 +50,109 @@ PHP, [
         ]);
     }
 
+    /**
+     * A resourceful controller with the seven conventional resource actions.
+     *
+     * Handlers receive the request plus the matched route parameters (the
+     * `{id}` segment for member actions); bodies stay deliberate JSON
+     * placeholders so nothing assumes a schema or business logic.
+     */
+    public static function resourceController(string $namespace, string $class): string
+    {
+        return strtr(<<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Sahil\Http\Request;
+use Sahil\Http\Response;
+
+/**
+ * {{class}} — resourceful controller.
+ *
+ * Handler methods receive the current request and the matched route
+ * parameters, and return a response; the HTTP kernel resolves this class
+ * through the container. Register the resource routes explicitly:
+ *
+ *     Link::get('/{{route}}', [{{class}}::class, 'index']);
+ *     Link::get('/{{route}}/create', [{{class}}::class, 'create']);
+ *     Link::post('/{{route}}', [{{class}}::class, 'store']);
+ *     Link::get('/{{route}}/{id}', [{{class}}::class, 'show']);
+ *     Link::get('/{{route}}/{id}/edit', [{{class}}::class, 'edit']);
+ *     Link::put('/{{route}}/{id}', [{{class}}::class, 'update']);
+ *     Link::delete('/{{route}}/{id}', [{{class}}::class, 'destroy']);
+ */
+final class {{class}}
+{
+    public function index(Request $request, array $params): Response
+    {
+        return Response::json([
+            'message' => '{{class}}@index',
+        ]);
+    }
+
+    public function create(Request $request, array $params): Response
+    {
+        return Response::json([
+            'message' => '{{class}}@create',
+        ]);
+    }
+
+    public function store(Request $request, array $params): Response
+    {
+        return Response::json([
+            'message' => '{{class}}@store',
+        ], 201);
+    }
+
+    public function show(Request $request, array $params): Response
+    {
+        return Response::json([
+            'message' => '{{class}}@show',
+            'id' => $params['id'] ?? null,
+        ]);
+    }
+
+    public function edit(Request $request, array $params): Response
+    {
+        return Response::json([
+            'message' => '{{class}}@edit',
+            'id' => $params['id'] ?? null,
+        ]);
+    }
+
+    public function update(Request $request, array $params): Response
+    {
+        return Response::json([
+            'message' => '{{class}}@update',
+            'id' => $params['id'] ?? null,
+        ]);
+    }
+
+    public function destroy(Request $request, array $params): Response
+    {
+        return Response::empty();
+    }
+}
+PHP, [
+            '{{namespace}}' => $namespace,
+            '{{class}}' => $class,
+            '{{route}}' => strtolower((string) preg_replace('/(?<!^)[A-Z]/', '-$0', self::resourceBase($class))),
+        ]);
+    }
+
+    /**
+     * The base name used for the route example: `UserController` → `user`.
+     */
+    private static function resourceBase(string $class): string
+    {
+        return str_ends_with($class, 'Controller') && strlen($class) > 10
+            ? substr($class, 0, -10)
+            : $class;
+    }
+
     public static function model(string $namespace, string $class, string $table): string
     {
         return strtr(<<<'PHP'
