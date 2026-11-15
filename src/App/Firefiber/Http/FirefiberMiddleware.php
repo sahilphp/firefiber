@@ -32,6 +32,7 @@ use Sahil\Firefiber\Storage\FileCacheStateStorage;
 use Sahil\Firefiber\Storage\FileLock;
 use Sahil\Firefiber\Storage\ReplayStorageInterface;
 use Sahil\Firefiber\Storage\StateStorageInterface;
+use Sahil\Http\Form;
 use Sahil\Http\Middleware\MiddlewareContract;
 use Sahil\Http\Request;
 use Sahil\Http\Response;
@@ -478,9 +479,12 @@ class FirefiberMiddleware implements MiddlewareContract
         return array_values($merged);
     }
 
-    private function normalizeUploadForm(array $form): array
+    /**
+     * @param array<string, mixed>|Form $form
+     */
+    private function normalizeUploadForm(array|Form $form): array
     {
-        $data = $form;
+        $data = $form instanceof Form ? $form->all() : $form;
 
         if (is_string($form['snapshot'] ?? null)) {
             try {

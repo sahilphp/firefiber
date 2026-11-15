@@ -6,6 +6,7 @@ namespace Sahil\Firefiber;
 
 use RuntimeException;
 use Sahil\Auth\AuthManager;
+use Sahil\Console\Generator\ApplicationPaths;
 use Sahil\Contracts\Cache\CacheContract;
 use Sahil\Contracts\Foundation\ApplicationContract;
 use Sahil\Contracts\Session\SessionContract;
@@ -64,6 +65,11 @@ final class PageRenderer
 
         $view = $page->view();
 
+        if ($view === null && $this->views !== null) {
+            $candidate = $this->conventionalView($page);
+            $view = $candidate !== null && $this->views->exists($candidate) ? $candidate : null;
+        }
+
         if ($view !== null && $this->views !== null) {
             $markup = $this->views->render($view, [
                 'app_name' => (string) $this->application->config()->get('app.name', 'SahilPHP'),
@@ -76,6 +82,31 @@ final class PageRenderer
         }
 
         return Response::html($this->document($page, $rendered));
+    }
+
+    /**
+     * The page's conventional template name — `App\Firefiber\Pages` classes
+     * map to `firefiber.pages.*` (`Admin\UsersPage` → `firefiber.pages.admin.users`)
+     * so a page without a `view()` override still finds its template in
+     * `resources/views/firefiber/pages`.
+     */
+    private function conventionalView(Page $page): ?string
+    {
+        $prefix = ApplicationPaths::for((string) $this->application->basePath())
+            ->applicationNamespace().'\\Firefiber\\Pages\\';
+        $class = $page::class;
+
+        if (!str_starts_with($class, $prefix)) {
+            return null;
+        }
+
+        $segments = array_map(static function (string $segment): string {
+            $segment = str_ends_with($segment, 'Page') ? substr($segment, 0, -4) : $segment;
+
+            return strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $segment));
+        }, explode('\\', substr($class, strlen($prefix))));
+
+        return 'firefiber.pages.'.implode('.', $segments);
     }
 
     public function renderComponent(Component $component, ?Component $parent = null, array $query = [], bool $force = false): string

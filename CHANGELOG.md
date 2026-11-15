@@ -4,6 +4,23 @@
 
 ### Added
 
+- The `fire` render environment now resolves page names to Sahil templates
+  under `resources/views/firefiber/pages`: `Render::fire('dashboard')`,
+  `$this->fire('dashboard')`, and `Response::fire('dashboard', ...)` render
+  `firefiber.pages.dashboard`, nested names map to subdirectories
+  (`admin/users` → `firefiber.pages.admin.users`), and names that are
+  already namespaced (`firefiber.*`) pass through verbatim. Names without a
+  matching template still resolve as components (`fire('Counter')`), and an
+  unknown name reports the expected template path.
+- `fiber` is registered as an alias of the `fire` render environment, so
+  `Render::fiber()`, `$this->fiber()`, and `Response::fiber()` work
+  identically.
+- `ComponentRenderer::has()` reports whether a name resolves to a component
+  without throwing.
+- Page classes without a `view()` override are matched to a conventional
+  template by class name (`App\Firefiber\Pages\Admin\UsersPage` →
+  `firefiber.pages.admin.users`) before falling back to the built-in
+  document shell.
 - `config.reload` (and `Firefiber.configure({ reload })`) overrides the
   automatic page reload that follows a lost component state; the same hook is
   used by tests.
@@ -16,6 +33,9 @@
 
 ### Fixed
 
+- Multipart uploads no longer fail with a `TypeError` on framework v2:
+  `FirefiberMiddleware::normalizeUploadForm()` accepts the request's
+  `Sahil\Http\Form` object as well as a plain array.
 - `fiber:click` sends `data-firefiber-payload` as the action payload instead of
   an empty object, so paging and sorting buttons (for example the starter
   admin table's) reach `handleAction()` with their arguments. The value may sit

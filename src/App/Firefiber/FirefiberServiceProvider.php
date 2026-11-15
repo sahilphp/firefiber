@@ -23,8 +23,8 @@ use Sahil\Firefiber\Storage\FileCacheStateStorage;
 use Sahil\Firefiber\Storage\ReplayStorageInterface;
 use Sahil\Firefiber\Storage\StateStorageInterface;
 use Sahil\Foundation\ServiceProvider;
-use Sahil\Routing\Link;
 use Sahil\Http\Router;
+use Sahil\Routing\Link;
 
 /**
  * Registers Firefiber's request middleware and package-managed browser
@@ -191,14 +191,23 @@ class FirefiberServiceProvider extends ServiceProvider
 
         $container->alias('firefiber.components', ComponentRendererContract::class);
 
-        // Unified rendering: `html` stays native, `fire` maps to the
-        // component renderer — used by `$this->fire()` / `Response::fire()`.
+        // Unified rendering: `html` stays native, `fire` resolves page
+        // templates under resources/views/firefiber/pages (components are
+        // the fallback) — used by `$this->fire()` / `Response::fire()`.
+        // `fiber` is registered as an alias for the same adapter.
         $container->singleton(
             \Sahil\Rendering\RenderManager::class,
-            static fn (Container $container): \Sahil\Rendering\RenderManager => new \Sahil\Rendering\RenderManager([
-                new \Sahil\Rendering\Adapters\HtmlAdapter($container->make(ViewContract::class)),
-                new FireAdapter($container->make(ComponentRendererContract::class)),
-            ]),
+            static function (Container $container): \Sahil\Rendering\RenderManager {
+                /** @var ViewContract $views */
+                $views = $container->make(ViewContract::class);
+                $manager = new \Sahil\Rendering\RenderManager([
+                    new \Sahil\Rendering\Adapters\HtmlAdapter($views),
+                    new FireAdapter($container->make(ComponentRendererContract::class), $views),
+                ]);
+                $manager->alias('fiber', 'fire');
+
+                return $manager;
+            },
         );
 
         $container->singleton(

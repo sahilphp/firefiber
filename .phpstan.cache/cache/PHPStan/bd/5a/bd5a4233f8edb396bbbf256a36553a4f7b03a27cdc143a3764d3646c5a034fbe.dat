@@ -1,1 +1,1 @@
-O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:71:"v2-671e21aa20e9bd6d50d9ae042a1528131cb1e9d000f75b3aeefd057ee7e355f1-8.2";s:4:"data";a:3:{s:7:"classes";a:1:{s:17:"sahil\http\router";b:1;}s:9:"functions";a:0:{}s:9:"constants";a:0:{}}}
+O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:71:"v2-b12d8ec534283721f97eb5fdaa958bc6d4c4bdece738c904b4359f6d5ac4d9cc-8.3";s:4:"data";a:3:{s:7:"classes";a:1:{s:17:"sahil\http\router";b:1;}s:9:"functions";a:0:{}s:9:"constants";a:0:{}}}

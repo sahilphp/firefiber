@@ -78,6 +78,21 @@ final class ComponentRenderer implements ComponentRendererContract
     }
 
     /**
+     * Whether a name resolves to a usable Component subclass — used by the
+     * `fire` adapter to decide between a page template and a component.
+     */
+    public function has(string $name): bool
+    {
+        try {
+            $this->resolveClass($name);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Map a template component name to an existing Component subclass.
      */
     public function resolveClass(string $name): string

@@ -1,1 +1,1 @@
-O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:71:"v2-cef0aec0509034e2cf8f05bca3fa61417b2a6990620063392611065be5074367-8.2";s:4:"data";a:3:{s:7:"classes";a:1:{s:39:"sahil\contracts\session\sessioncontract";b:1;}s:9:"functions";a:0:{}s:9:"constants";a:0:{}}}
+O:23:"PHPStan\Cache\CacheItem":2:{s:11:"variableKey";s:71:"v2-8523f273bc2cac0f0f6a1dce0def6da6f4d4806fdb814d8e213c35ec8ab84253-8.3";s:4:"data";a:3:{s:7:"classes";a:1:{s:39:"sahil\contracts\session\sessioncontract";b:1;}s:9:"functions";a:0:{}s:9:"constants";a:0:{}}}
