@@ -1205,15 +1205,21 @@ class FirefiberMiddleware implements MiddlewareContract
                                 throw new \RuntimeException('Unable to persist component metadata');
                             }
 
-                            $parentSnapshots = $this->dispatchParentEvents($component, $events, (string) $protocolVersion);
+                            $delivered = $this->dispatchParentEvents($component, $events, (string) $protocolVersion);
+
+                            // Self/broadcast delivery may have run listeners
+                            // on this component — rebuild state before the
+                            // response snapshot so it is never stale.
+                            $state = $component->state();
+
                             $responseData = [
                                 'status' => 'ok',
                                 'componentId' => $componentId,
                                 'action' => $action,
                                 'result' => $result,
                                 'snapshot' => $this->freshSnapshot((string) $componentId, $state, (string) $protocolVersion),
-                                'events' => $events,
-                                'parentSnapshots' => $parentSnapshots,
+                                'events' => $delivered['events'],
+                                'parentSnapshots' => $delivered['snapshots'],
                             ];
 
                             // Lazy loads always return fresh markup so the
@@ -1775,7 +1781,17 @@ class FirefiberMiddleware implements MiddlewareContract
     protected function validateCsrf(string $requestToken, ?string $cookieToken): void
     {
         if ($this->session !== null && $this->session->isStarted()) {
-            if (!hash_equals($this->session->token(), $requestToken)) {
+            // issueToken() rotates the CSRF token once per request and keeps
+            // retired tokens in a bounded history ring — a token minted on
+            // the page render stays valid for follow-up action requests even
+            // after later requests rotated it. validateToken() accepts the
+            // current token and the ring; token() alone would reject every
+            // legitimate action once the token has rotated.
+            if (method_exists($this->session, 'validateToken')) {
+                if (!$this->session->validateToken($requestToken)) {
+                    throw new CsrfException('CSRF token mismatch between request and session');
+                }
+            } elseif (!hash_equals($this->session->token(), $requestToken)) {
                 throw new CsrfException('CSRF token mismatch between request and session');
             }
             return;
@@ -1935,12 +1951,24 @@ class FirefiberMiddleware implements MiddlewareContract
      * @param list<array{name: string, payload: array}> $events
      * @return list<array{id: string, state: array, timestamp: int, protocolVersion: string, signature: string, sessionId?: string, userId?: string, componentClass?: string}>
      */
+    /**
+     * Deliver queued component events through the rendered tree.
+     *
+     * Targeting comes from the queued event's `to` marker: `self`,
+     * `ancestors`, `children`, `broadcast` (every listener in the connected
+     * tree), `class` (every mounted component of `target`), and `browser`
+     * (no server delivery — the runtime emits a CustomEvent). Legacy queue
+     * entries without `to` keep the original parents-only semantics.
+     *
+     * @return array{snapshots: list<array>, events: list<array>}
+     */
     private function dispatchParentEvents(Component $source, array $events, string $protocolVersion): array
     {
         $registry = new \Sahil\Firefiber\ComponentParentRegistry($this->stateStorage);
         $queue = [];
         $snapshots = [];
         $seen = [];
+        $delivered = [];
 
         foreach ($events as $event) {
             $queue[] = ['source' => $source, 'event' => $event];
@@ -1955,8 +1983,13 @@ class FirefiberMiddleware implements MiddlewareContract
                 continue;
             }
 
-            foreach ($registry->parentsFor($source->id()) as $parentLink) {
-                $dedupKey = $source->id()."\0".$parentLink['id']."\0".$event['name']."\0".json_encode($event['payload']);
+            $to = is_string($event['to'] ?? null) ? $event['to'] : 'ancestors';
+            $targets = $this->eventTargets($source, $to, is_string($event['target'] ?? null) ? $event['target'] : null, $registry);
+
+            $event['delivered'] = [];
+
+            foreach ($targets as $targetLink) {
+                $dedupKey = $targetLink['id']."\0".$event['name']."\0".$to."\0".json_encode($event['payload']);
 
                 if (isset($seen[$dedupKey])) {
                     continue;
@@ -1964,40 +1997,136 @@ class FirefiberMiddleware implements MiddlewareContract
 
                 $seen[$dedupKey] = true;
 
-                if (!class_exists($parentLink['class']) || !is_subclass_of($parentLink['class'], Component::class)) {
+                if (!class_exists($targetLink['class']) || !is_subclass_of($targetLink['class'], Component::class)) {
                     continue;
                 }
 
-                $parent = $this->hydrateById($parentLink['id'], $parentLink['class']);
+                $target = $targetLink['id'] === $source->id()
+                    ? $source
+                    : $this->hydrateById($targetLink['id'], $targetLink['class']);
 
-                if ($parent === null || !$parent->hasListener($event['name'])) {
+                if ($target === null || !$target->hasListener($event['name'])) {
                     continue;
                 }
 
-                $parent->handleEvent($event['name'], $event['payload']);
+                $target->handleEvent($event['name'], $event['payload']);
+                $event['delivered'][] = $target->id();
+                $delivered[$event['name']][] = $target->id();
 
-                if (!$this->stateStorage->saveState($parent->id(), $parent->state(), $this->stateTtl)) {
-                    throw new \RuntimeException('Unable to persist parent component state');
+                if (!$this->stateStorage->saveState($target->id(), $target->state(), $this->stateTtl)) {
+                    throw new \RuntimeException('Unable to persist component state');
                 }
 
-                if (!$this->stateStorage->saveState($parent->id().'::__firefiber_metadata', [
-                    'properties' => $parent->properties(),
-                    'metadata' => $parent->trustedMetadata(),
+                if (!$this->stateStorage->saveState($target->id().'::__firefiber_metadata', [
+                    'properties' => $target->properties(),
+                    'metadata' => $target->trustedMetadata(),
                 ], $this->stateTtl)) {
-                    throw new \RuntimeException('Unable to persist parent component metadata');
+                    throw new \RuntimeException('Unable to persist component metadata');
                 }
 
-                $snapshots[] = $this->freshSnapshot($parent->id(), $parent->state(), $protocolVersion);
+                $snapshots[] = $this->freshSnapshot($target->id(), $target->state(), $protocolVersion);
 
-                foreach ($parent->queuedEvents() as $queuedEvent) {
-                    $queue[] = ['source' => $parent, 'event' => $queuedEvent];
+                foreach ($target->queuedEvents() as $queuedEvent) {
+                    $queue[] = ['source' => $target, 'event' => $queuedEvent];
                 }
 
-                $parent->clearQueuedEvents();
+                $target->clearQueuedEvents();
+            }
+
+            $eventsForBrowser[] = $event;
+        }
+
+        // Everything the server queued is also surfaced as browser
+        // CustomEvents; `delivered` tells the runtime which component roots
+        // handled the event server-side.
+        $browserEvents = [];
+        foreach ($eventsForBrowser ?? [] as $event) {
+            $browserEvents[] = [
+                'name' => $event['name'],
+                'payload' => $event['payload'],
+                'to' => $event['to'] ?? 'ancestors',
+                'target' => $event['target'] ?? null,
+                'delivered' => $event['delivered'] ?? [],
+                'from' => null,
+            ];
+        }
+
+        return ['snapshots' => $snapshots, 'events' => $browserEvents];
+    }
+
+    /**
+     * Resolve the link records of every component in the connected tree
+     * relative to the event target — self, ancestors, descendants, or the
+     * whole tree for broadcast/class targeting. Bounded to protect the
+     * action pipeline from pathological link graphs.
+     *
+     * @return list<array{id: string, class: string}>
+     */
+    private function eventTargets(Component $source, string $to, ?string $target, \Sahil\Firefiber\ComponentParentRegistry $registry): array
+    {
+        if ($to === 'browser') {
+            return [];
+        }
+
+        if ($to === 'self') {
+            return [['id' => $source->id(), 'class' => $source::class]];
+        }
+
+        if ($to === 'ancestors') {
+            return $registry->parentsFor($source->id());
+        }
+
+        if ($to === 'children') {
+            $result = [];
+            $seen = [$source->id() => true];
+            $stack = $registry->childrenFor($source->id());
+
+            while ($stack !== [] && count($seen) < 200) {
+                $link = array_pop($stack);
+                if (isset($seen[$link['id']])) {
+                    continue;
+                }
+                $seen[$link['id']] = true;
+                $result[] = $link;
+                foreach ($registry->childrenFor($link['id']) as $nested) {
+                    $stack[] = $nested;
+                }
+            }
+
+            return $result;
+        }
+
+        // broadcast / class: walk the connected tree in both directions.
+        $tree = [['id' => $source->id(), 'class' => $source::class]];
+        $seen = [$source->id() => true];
+        $stack = [
+            ...$registry->parentsFor($source->id()),
+            ...$registry->childrenFor($source->id()),
+        ];
+
+        while ($stack !== [] && count($seen) < 200) {
+            $link = array_pop($stack);
+            if (isset($seen[$link['id']])) {
+                continue;
+            }
+            $seen[$link['id']] = true;
+            $tree[] = $link;
+            foreach ($registry->parentsFor($link['id']) as $parent) {
+                $stack[] = $parent;
+            }
+            foreach ($registry->childrenFor($link['id']) as $child) {
+                $stack[] = $child;
             }
         }
 
-        return $snapshots;
+        if ($to === 'class') {
+            return array_values(array_filter(
+                $tree,
+                static fn (array $link): bool => $link['class'] === $target,
+            ));
+        }
+
+        return $tree;
     }
 
     private function hydrateById(string $componentId, string $componentClass): ?Component

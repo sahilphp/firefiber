@@ -1056,6 +1056,10 @@ final class AdvancedCapabilityTest extends TestCase
     /** @return array<string, mixed> */
     private function snapshotFromHtml(string $html): array
     {
+        // The page's own reactive root carries a snapshot too — drop its
+        // opening tag so the target component's snapshot is found first.
+        $html = (string) preg_replace('/<[a-zA-Z][^>]*class="[^"]*firefiber-page[^"]*"[^>]*>/', '', $html, 1);
+
         preg_match('/data-firefiber-snapshot="([^"]+)"/', $html, $matches);
         self::assertNotEmpty($matches, 'Rendered markup must contain a signed snapshot.');
 

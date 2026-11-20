@@ -47,9 +47,14 @@ php sahil firefiber:component Counter --inline
 php sahil firefiber:component Admin/Stats
 ```
 
-Pages are discovered from `App\Firefiber\Pages`; the provider registers
-their routes automatically. Components are discovered through their class
-names in the secure action protocol. Both `<fiber:component>` and `@component`
+Pages are first-class route targets: register them explicitly with
+`Link::firefiber('/path', ThePage::class)` in `routes/web.php` — no
+controller is involved. A page owns its state, actions and lifecycle;
+`mount()` runs once on the initial GET (with the route's matched
+parameters) and later action requests hydrate the signed server-side
+snapshot instead. Page classes live under `App\Firefiber\Pages` for
+organization only — discovery never publishes routes. Components are
+resolved through their class names in the secure action protocol. Both `<fiber:component>` and `@component`
 syntaxes are supported — see [the command reference](docs/commands.md) for
 details on both.
 

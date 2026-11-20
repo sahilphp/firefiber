@@ -87,10 +87,19 @@ final class PageRendererTest extends TestCase
         self::assertStringNotContainsString('data-firefiber-hmac-key=', $html);
         self::assertStringNotContainsString(FirefiberSecrets::masterKey($application), $html);
 
-        preg_match('/data-firefiber-snapshot="([^"]+)"/', $html, $snapshotMatches);
-        self::assertNotEmpty($snapshotMatches);
-        $snapshot = json_decode(html_entity_decode($snapshotMatches[1], ENT_QUOTES, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+        preg_match_all('/data-firefiber-snapshot="([^"]+)"/', $html, $snapshotMatches);
+        self::assertNotEmpty($snapshotMatches[1]);
 
+        $snapshot = null;
+        foreach ($snapshotMatches[1] as $encoded) {
+            $decoded = json_decode(html_entity_decode($encoded, ENT_QUOTES, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+            if (($decoded['componentClass'] ?? null) === PageRendererTestCounter::class) {
+                $snapshot = $decoded;
+                break;
+            }
+        }
+
+        self::assertNotNull($snapshot, 'Expected the counter component snapshot in the rendered page.');
         $componentId = (string) $snapshot['componentId'];
         $middleware = new FirefiberMiddleware(
             new FileCacheReplayStorage($this->root.'/replay'),

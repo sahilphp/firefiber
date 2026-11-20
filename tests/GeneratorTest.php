@@ -57,7 +57,8 @@ final class GeneratorTest extends TestCase
         self::assertStringContainsString('Created app/Firefiber/Components/Counter.php', $out);
         self::assertTrue(class_exists(\Acme\Firefiber\Components\Counter::class));
         $component = new \Acme\Firefiber\Components\Counter();
-        self::assertSame(['count' => 1], $component->handleAction('increment', []));
+        $component->handleAction('increment', []);
+        self::assertSame(1, $component->state()['count']);
         $component = new \Acme\Firefiber\Components\Counter();
         self::assertStringContainsString('data-firefiber-bind="count"', $component->render());
     }
@@ -73,7 +74,8 @@ final class GeneratorTest extends TestCase
 
         // The standalone stub is the usable counter component.
         $component = new \Acme\Firefiber\Components\Profile();
-        self::assertSame(['count' => 1], $component->handleAction('increment', []));
+        $component->handleAction('increment', []);
+        self::assertSame(1, $component->state()['count']);
     }
 
     public function test_inline_flag_generates_an_inline_component_that_autoloads(): void
@@ -85,10 +87,8 @@ final class GeneratorTest extends TestCase
         self::assertTrue(class_exists(\Acme\Firefiber\Components\Banner::class));
 
         $component = new \Acme\Firefiber\Components\Banner();
-        self::assertSame(
-            ['message' => 'hello'],
-            $component->handleAction('updateMessage', ['message' => 'hello']),
-        );
+        $component->handleAction('updateMessage', ['message' => 'hello']);
+        self::assertSame('hello', $component->state()['message']);
     }
 
     public function test_nested_component_names_use_nested_directories_and_namespaces(): void

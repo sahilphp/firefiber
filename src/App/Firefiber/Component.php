@@ -62,7 +62,7 @@ abstract class Component
     protected array $state = [];
 
     /** Constructor-provided state, used to reset URL-hydrated keys. */
-    private array $initialState = [];
+    protected array $initialState = [];
 
     /**
      * List of actions this component can handle.
@@ -162,9 +162,16 @@ abstract class Component
 
     protected bool $hydrated = false;
 
-    private static bool $hydrationInProgress = false;
+    protected static bool $hydrationInProgress = false;
 
     private bool $bootedPending = false;
+
+    /**
+     * `#[On]` listener pairs resolved per component class.
+     *
+     * @var array<class-string, list<array{0: string, 1: string}>>
+     */
+    private static array $onListenersCache = [];
 
     /**
      * Create a component for hydration.
@@ -201,9 +208,17 @@ abstract class Component
         array $properties = [],
     ) {
         $this->id = $this->generateId();
-        $this->state = $initialState;
-        $this->initialState = $initialState;
-        $this->actions = $actions;
+        // Property defaults declared on the subclass (`protected array
+        // $state = [...]`, `protected array $actions = [...]`) are the
+        // natural component API — constructor arguments only override them
+        // when actually provided.
+        $this->state = $initialState === [] ? $this->state : $initialState;
+        $this->initialState = $this->state;
+
+        if ($actions !== []) {
+            $this->actions = $actions;
+        }
+
         $this->initializeProperties($properties);
         $this->mount();
     }
@@ -236,6 +251,89 @@ abstract class Component
     public function state(): array
     {
         return $this->state;
+    }
+
+    /**
+     * Stable per-class CSS scope identifier. Rendered as `data-fx="fx-*"`
+     * on the component root; `styles()`/`styleFile()` rules are rewritten
+     * to match only beneath it, so identical classes in sibling components
+     * never collide while every component *instance* of the same class
+     * shares one scope.
+     */
+    public function styleScope(): string
+    {
+        return 'fx-'.substr(hash('sha256', static::class), 0, 10);
+    }
+
+    /**
+     * Inline component CSS — automatically scoped under the component's
+     * `[data-fx]` attribute at render time.
+     */
+    protected function styles(): string
+    {
+        return '';
+    }
+
+    /**
+     * Component stylesheet path relative to the application `resources`
+     * directory (e.g. `css/firefiber/counter.css`). Scoped the same way as
+     * `styles()`; `..` traversal and missing files fail loudly — a broken
+     * stylesheet reference is a developer error, not a runtime condition.
+     */
+    protected function styleFile(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Opt-in CSS emitted unscoped. Use sparingly — these rules apply to the
+     * whole document whenever this component is rendered.
+     */
+    protected function globalStyles(): string
+    {
+        return '';
+    }
+
+    /**
+     * Resolve this component's styles for the renderer.
+     *
+     * @return array{scoped: string, global: string}
+     */
+    public function collectedStyles(): array
+    {
+        $scoped = trim($this->styles());
+        $global = trim($this->globalStyles());
+        $file = $this->styleFile();
+
+        if ($file !== null && $file !== '') {
+            $scoped .= ($scoped === '' ? '' : "\n").self::readStyleFile($file);
+        }
+
+        return ['scoped' => $scoped, 'global' => $global];
+    }
+
+    private static function readStyleFile(string $relative): string
+    {
+        $normalized = str_replace('\\', '/', $relative);
+
+        if (str_contains($normalized, '..') || str_starts_with($normalized, '/') || preg_match('/^[A-Za-z]:\//', $normalized) === 1) {
+            throw new InvalidStateException(sprintf('Unsafe component styleFile path [%s].', $relative));
+        }
+
+        $base = realpath(base_path('resources'));
+        $path = $base === false ? null : realpath($base.'/'.$normalized);
+
+        if ($base === false || $path === null || (!str_starts_with($path.'/', $base.'/') && $path !== $base)) {
+            throw new InvalidStateException(sprintf('Component stylesheet [%s] not found under resources/.', $relative));
+        }
+
+        $css = file_get_contents($path);
+
+        if ($css === false) {
+            throw new InvalidStateException(sprintf('Component stylesheet [%s] is not readable.', $relative));
+        }
+
+        return $css;
     }
 
     /**
@@ -499,6 +597,54 @@ abstract class Component
         return $this->uploadDefinitions;
     }
 
+    /**
+     * Staged/promoted uploads for a field as `UploadedFile` objects, read
+     * from the authoritative `uploads` state. Expired staged records are
+     * skipped — their files and sidecars may already be gone.
+     *
+     * @return list<\Sahil\Firefiber\Uploads\UploadedFile>
+     */
+    public function uploadedFiles(string $field): array
+    {
+        $listed = $this->state['uploads'] ?? null;
+
+        if (!is_array($listed)) {
+            return [];
+        }
+
+        $files = [];
+        $now = time();
+
+        foreach ($listed as $entry) {
+            if (!is_array($entry) || ($entry['field'] ?? null) !== $field) {
+                continue;
+            }
+
+            $expiresAt = (int) ($entry['expiresAt'] ?? 0);
+
+            if (empty($entry['promoted']) && $expiresAt > 0 && $expiresAt <= $now) {
+                continue;
+            }
+
+            $file = \Sahil\Firefiber\Uploads\UploadedFile::fromRecord($entry, $this);
+
+            if ($file !== null) {
+                $files[] = $file;
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * The first staged/promoted upload for a field, or null. For a
+     * single-file field this is the developer-facing accessor.
+     */
+    public function uploadedFile(string $field): ?\Sahil\Firefiber\Uploads\UploadedFile
+    {
+        return $this->uploadedFiles($field)[0] ?? null;
+    }
+
     public function cacheConfiguration(): array
     {
         return $this->cacheConfiguration;
@@ -655,7 +801,7 @@ abstract class Component
     /**
      * Validate and normalize declared properties.
      */
-    private function initializeProperties(array $provided): void
+    protected function initializeProperties(array $provided): void
     {
         $normalized = [];
 
@@ -864,8 +1010,77 @@ abstract class Component
 
     /**
      * Queue an event for the middleware to deliver after the action succeeds.
+     * Broadcast semantics: every listening component in the rendered tree —
+     * self, ancestors, descendants and siblings — receives it, and the
+     * browser runtime emits a bubbling CustomEvent on this component's root.
      */
     public function emit(string $event, array $payload = []): static
+    {
+        return $this->dispatch($event, $payload);
+    }
+
+    /**
+     * Broadcast an event to every listener in the component tree plus a
+     * `firefiber:<name>` CustomEvent on this component's root element.
+     */
+    public function dispatch(string $event, array $payload = []): static
+    {
+        return $this->queueEvent($event, $payload, 'broadcast');
+    }
+
+    /**
+     * Deliver only to this component's own listeners (and its own browser
+     * root — the CustomEvent still bubbles to the document for JS).
+     */
+    public function dispatchSelf(string $event, array $payload = []): static
+    {
+        return $this->queueEvent($event, $payload, 'self');
+    }
+
+    /**
+     * Deliver to ancestor components only — the classic `emit` behaviour
+     * for components that should notify their parents but not siblings.
+     */
+    public function dispatchUp(string $event, array $payload = []): static
+    {
+        return $this->queueEvent($event, $payload, 'ancestors');
+    }
+
+    /**
+     * Deliver to descendant components only.
+     */
+    public function dispatchDown(string $event, array $payload = []): static
+    {
+        return $this->queueEvent($event, $payload, 'children');
+    }
+
+    /**
+     * Deliver to every component of the given class mounted in the same
+     * rendered tree (for example a sibling widget listening for updates).
+     *
+     * @param class-string<Component> $class
+     */
+    public function dispatchTo(string $class, string $event, array $payload = []): static
+    {
+        if (!is_subclass_of($class, Component::class)) {
+            throw new InvalidStateException(sprintf('Event target [%s] is not a Firefiber component.', $class));
+        }
+
+        return $this->queueEvent($event, $payload, 'class', $class);
+    }
+
+    /**
+     * Emit a browser-only CustomEvent — no server listener is invoked.
+     */
+    public function dispatchBrowserEvent(string $event, array $payload = []): static
+    {
+        return $this->queueEvent($event, $payload, 'browser');
+    }
+
+    /**
+     * @param 'broadcast'|'self'|'ancestors'|'children'|'class'|'browser' $to
+     */
+    private function queueEvent(string $event, array $payload, string $to, ?string $target = null): static
     {
         if (preg_match('/^[A-Za-z][A-Za-z0-9._:-]*$/', $event) !== 1) {
             throw new InvalidStateException(sprintf('Invalid component event name [%s].', $event));
@@ -876,7 +1091,7 @@ abstract class Component
         }
 
         $payload = $this->validatedEventPayload($event, $payload);
-        $this->queuedEvents[] = ['name' => $event, 'payload' => $payload];
+        $this->queuedEvents[] = ['name' => $event, 'payload' => $payload, 'to' => $to, 'target' => $target];
 
         return $this;
     }
@@ -898,22 +1113,159 @@ abstract class Component
 
     public function hasListener(string $event): bool
     {
-        $listener = $this->listeners[$event] ?? null;
-
-        return is_string($listener) && $listener !== '' && method_exists($this, $listener);
+        return $this->listenersFor($event) !== [];
     }
 
     public function handleEvent(string $event, array $payload = []): void
     {
-        $listener = $this->listeners[$event] ?? null;
+        $listeners = $this->listenersFor($event);
 
-        if (!is_string($listener) || $listener === '' || !method_exists($this, $listener)) {
+        if ($listeners === []) {
             throw new UnknownActionException(sprintf('Unknown component event: %s', $event), $this->id());
         }
 
         $payload = $this->validatedEventPayload($event, $payload);
         $this->validateEventPayload($event, $payload);
-        $this->{$listener}($payload);
+
+        foreach ($listeners as [$method, $spread]) {
+            if ($spread) {
+                $this->{$method}(...$this->listenerArguments($event, $method, $payload));
+            } else {
+                $this->{$method}($payload);
+            }
+        }
+    }
+
+    /**
+     * Map a `#[On]` event payload onto the listener's declared parameters:
+     * each parameter is filled from the same-named payload key, missing
+     * required parameters fail loudly, and surplus payload keys are
+     * ignored — payloads are data, not method signatures.
+     *
+     * @return list<mixed>
+     */
+    private function listenerArguments(string $event, string $method, array $payload): array
+    {
+        $parameters = (new \ReflectionMethod($this, $method))->getParameters();
+        $arguments = [];
+
+        foreach ($parameters as $parameter) {
+            $name = $parameter->getName();
+
+            if (array_key_exists($name, $payload)) {
+                $arguments[] = $payload[$name];
+                continue;
+            }
+
+            if ($parameter->isDefaultValueAvailable()) {
+                $arguments[] = $parameter->getDefaultValue();
+                continue;
+            }
+
+            if ($parameter->isVariadic()) {
+                continue;
+            }
+
+            throw new InvalidStateException(sprintf(
+                'Event [%s] payload is missing required parameter [$%s] for %s::%s().',
+                $event,
+                $name,
+                static::class,
+                $method,
+            ));
+        }
+
+        return $arguments;
+    }
+
+    /**
+     * Resolve every listener for an event: all `#[On('name')]` methods
+     * (payload spread as call arguments) plus the `$listeners` map entry
+     * (payload delivered as one array argument).
+     *
+     * @return list<array{0: string, 1: bool}>
+     */
+    private function listenersFor(string $event): array
+    {
+        $resolved = [];
+
+        foreach ($this->onAttributeListeners() as [$declaredEvent, $method]) {
+            if ($declaredEvent === $event) {
+                $resolved[] = [$method, true];
+            }
+        }
+
+        $listener = $this->listeners[$event] ?? null;
+
+        if (is_string($listener) && $listener !== '' && $this->isExposedMethod($listener)) {
+            $resolved[] = [$listener, false];
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Event-name → method pairs declared via `#[On]` attributes on this
+     * component class. Cached per class.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function onAttributeListeners(): array
+    {
+        $class = static::class;
+
+        if (isset(self::$onListenersCache[$class])) {
+            return self::$onListenersCache[$class];
+        }
+
+        $listeners = [];
+
+        try {
+            $reflection = new \ReflectionClass($this);
+        } catch (\ReflectionException) {
+            return self::$onListenersCache[$class] = [];
+        }
+
+        foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+            if ($method->isStatic() || $method->isAbstract()) {
+                continue;
+            }
+
+            $declaring = $method->getDeclaringClass()->getName();
+            $base = $this instanceof Page ? Page::class : Component::class;
+
+            if ($declaring === $base || !is_subclass_of($declaring, $base)) {
+                continue;
+            }
+
+            foreach ($method->getAttributes(\Sahil\Firefiber\Attributes\On::class) as $attribute) {
+                $listeners[] = [(string) $attribute->newInstance()->event, $method->getName()];
+            }
+        }
+
+        return self::$onListenersCache[$class] = $listeners;
+    }
+
+    /**
+     * A method reachable from the outside only when it is public,
+     * non-static and declared on the component hierarchy below the
+     * framework bases — never a lifecycle or plumbing method.
+     */
+    private function isExposedMethod(string $name): bool
+    {
+        if (isset(self::RESERVED_ACTIONS[$name]) || !method_exists($this, $name)) {
+            return false;
+        }
+
+        $method = new \ReflectionMethod($this, $name);
+        $base = $this instanceof Page ? Page::class : Component::class;
+        $declaring = $method->getDeclaringClass()->getName();
+
+        return $method->isPublic()
+            && !$method->isStatic()
+            && !$method->isAbstract()
+            && $declaring !== $base
+            && is_subclass_of($declaring, $base);
     }
 
     /**
@@ -1045,18 +1397,118 @@ abstract class Component
     /**
      * Handle an action received from the browser.
      *
-     * The default implementation throws an exception. Subclasses should
-     * override this method or register action handlers via registerAction().
+     * The default dispatcher invokes a same-named public method declared on
+     * the subclass — `protected array $actions = ['increment']` authorizes
+     * `increment()` and the payload is spread as call arguments (list
+     * payloads positional, associative payloads named). Methods declared by
+     * the framework (lifecycle, hydration, rendering and state plumbing)
+     * can never be reached this way: only methods first declared by the
+     * component's own class hierarchy below {@see Component} are callable.
+     * Subclasses may still override this method for fully manual dispatch.
      *
      * @param string $action The action name
      * @param array $payload The action payload from the browser
      *
-     * @return array{status: string, payload: array} Response data
+     * @return array<string, mixed> Response data
      *
      * @throws \Sahil\Firefiber\Exceptions\UnknownActionException When the action is not registered
      * @throws \Sahil\Firefiber\Exceptions\InvalidStateException When the state is invalid
      */
-    abstract public function handleAction(string $action, array $payload): array;
+    public function handleAction(string $action, array $payload): array
+    {
+        if (!$this->isActionRegistered($action) && $this->actions !== []) {
+            throw new UnknownActionException($action, $this->id());
+        }
+
+        if (!$this->isExposedMethod($action)) {
+            throw new UnknownActionException($action, $this->id());
+        }
+
+        $result = $this->{$action}(...$payload);
+
+        return is_array($result) ? $result : ['value' => $result];
+    }
+
+    /**
+     * Method names that may never be invoked as browser actions, even when
+     * user subclasses declare or override them.
+     */
+    private const RESERVED_ACTIONS = [
+        'mount' => true,
+        'booted' => true,
+        'hydrate' => true,
+        'updating' => true,
+        'updated' => true,
+        'rendering' => true,
+        'destroyed' => true,
+        'destroy' => true,
+        'render' => true,
+        'view' => true,
+        'title' => true,
+        'path' => true,
+        'layout' => true,
+        'components' => true,
+        'children' => true,
+        'show' => true,
+        'authorize' => true,
+        'snapshot' => true,
+        'initialSnapshot' => true,
+        'newForHydration' => true,
+        'state' => true,
+        'updateState' => true,
+        'updateModel' => true,
+        'properties' => true,
+        'id' => true,
+        'emit' => true,
+        'dispatch' => true,
+        'dispatchSelf' => true,
+        'dispatchUp' => true,
+        'dispatchDown' => true,
+        'dispatchTo' => true,
+        'dispatchBrowserEvent' => true,
+        'queueEvent' => true,
+        'handleEvent' => true,
+        'hasListener' => true,
+        'listenerFor' => true,
+        'listenersFor' => true,
+        'listenerArguments' => true,
+        'onAttributeListeners' => true,
+        'isExposedMethod' => true,
+        'styleScope' => true,
+        'styles' => true,
+        'styleFile' => true,
+        'globalStyles' => true,
+        'collectedStyles' => true,
+        'readStyleFile' => true,
+        'uploadedFile' => true,
+        'uploadedFiles' => true,
+        'uploadDefinitions' => true,
+        'eventPayloadRules' => true,
+        'validatedEventPayload' => true,
+        'validateEventPayload' => true,
+        'load' => true,
+        'poll' => true,
+        'validateForm' => true,
+        'formRules' => true,
+        'formRulesFor' => true,
+        'handleAction' => true,
+        'registerAction' => true,
+        'isActionRegistered' => true,
+        'registeredActions' => true,
+        'updateFromUpload' => true,
+        'setTrustedMetadata' => true,
+        'trustedMetadata' => true,
+        'applyQueryValue' => true,
+        'applyQuerySyncPayload' => true,
+        'querySyncConfiguration' => true,
+        'queuedEvents' => true,
+        'clearQueuedEvents' => true,
+        'storageEnvelope' => true,
+        'callUpdating' => true,
+        'callUpdated' => true,
+        'routeParams' => true,
+        'contentView' => true,
+    ];
 
     /**
      * Apply a fiber:model update to the component state.

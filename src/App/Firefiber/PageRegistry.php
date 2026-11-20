@@ -6,14 +6,14 @@ namespace Sahil\Firefiber;
 
 use Sahil\Console\Generator\ApplicationPaths;
 use Sahil\Contracts\Foundation\ApplicationContract;
-use Sahil\Routing\Link;
 
 /**
  * Discovers application pages below `App\Firefiber\Pages`.
  *
- * A page becomes reachable simply by being autoloadable and extending
- * {@see Page}. No route file or bootstrap edit is needed for the conventional
- * generated location.
+ * Discovery exists for organizing and resolving page classes — it does NOT
+ * publish routes. Every reachable page is registered explicitly through
+ * `Link::firefiber('/path', ThePage::class)` in the application's route
+ * files, so no page is ever exposed publicly by accident.
  */
 final class PageRegistry
 {
@@ -61,23 +61,6 @@ final class PageRegistry
         usort($pages, static fn (Page $a, Page $b): int => strcmp($a->path(), $b->path()));
 
         return $pages;
-    }
-
-    public function registerRoutes(): void
-    {
-        $router = $this->application->container()->make(\Sahil\Http\Router::class);
-
-        foreach ($this->pages() as $page) {
-            $name = 'firefiber.page.'.str_replace('/', '.', trim($page->path(), '/'));
-
-            if ($router->routeByName($name) !== null) {
-                continue;
-            }
-
-            $router->register(
-                Link::get($page->path(), [$page::class, 'show'])->name($name),
-            );
-        }
     }
 
     /**

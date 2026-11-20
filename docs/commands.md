@@ -29,9 +29,16 @@ Options:
 - `--path=DIR` — application root.
 
 A generated page is written to `App\Firefiber\Pages` and its view to
-`resources/views/firefiber/pages`. The provider discovers the page by
-namespace and registers its route automatically; no route file edit is
-needed.
+`resources/views/firefiber/pages`. Mount it explicitly in `routes/web.php` —
+no controller is involved:
+
+```php
+Link::firefiber('/demo', DemoPage::class);
+```
+
+Discovery only organizes page classes under `App\Firefiber\Pages`; it never
+publishes routes, so a page is only reachable once `Link::firefiber()` mounts
+it.
 
 ## Components
 
@@ -115,6 +122,18 @@ instance with its own identity and state, and components may nest through
 `children()`. An unknown component, a class that does not extend
 `Sahil\Firefiber\Component`, or a component that reaches itself through
 `children()` fails with a clear error instead of rendering a placeholder.
+
+## Upload cleanup
+
+```bash
+php sahil firefiber:cleanup-uploads [--max-age=SECONDS] [--disk=NAME]
+```
+
+Deletes staged upload directories under `firefiber/uploads/` whose last
+modification is older than `--max-age` seconds (default `3600`, matching the
+default staged lifetime). Without `--disk` every configured filesystem disk
+is swept. Run it from a scheduler entry — e.g. hourly — to reclaim space
+from staged files that were never promoted or removed.
 
 ## Security
 

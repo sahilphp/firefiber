@@ -9,9 +9,12 @@ Firefiber component roots.
 ```php
 final class Counter extends Component
 {
-    public function __construct(array $properties = [])
+    protected array $state = ['count' => 0];
+    protected array $actions = ['increment'];
+
+    public function increment(): void
     {
-        parent::__construct(['count' => 0], ['increment'], $properties);
+        $this->updateState(['count' => (int) ($this->state['count'] ?? 0) + 1]);
     }
 
     public function render(): string
@@ -21,20 +24,14 @@ final class Counter extends Component
         return '<button type="button" fiber:click="increment">Increment</button>'
             .'<span data-firefiber-bind="count">'.$count.'</span>';
     }
-
-    public function handleAction(string $action, array $payload): array
-    {
-        if ($action !== 'increment') {
-            throw new UnknownActionException($action, $this->id());
-        }
-
-        $count = (int) ($this->state['count'] ?? 0) + 1;
-        $this->updateState(['count' => $count]);
-
-        return ['count' => $count];
-    }
 }
 ```
+
+State, actions, properties and listeners may all be declared as class
+properties (`$state`, `$actions`, `$propertyDefinitions`, `$listeners`,
+`$emits`, `$modelable`); constructor arguments still work and only override
+a declared property when provided. Overriding `handleAction()` for manual
+dispatch remains supported.
 
 Component state is persisted by Firefiber after a successful action. A browser
 snapshot records the state it came from, but actions always hydrate from the
@@ -52,6 +49,30 @@ return '<button type="button" fiber:click="goToPage"'
 `handleAction()` then receives `['page' => 2]`. A form submission sends its
 controls instead, and a `fiber:model` control sends the field it edits.
 
+### Default action dispatch
+
+Overriding `handleAction()` is optional. Without an override, an allowlisted
+action dispatches to the same-named public method declared on the component
+class — the payload spreads as call arguments (list payloads positional,
+associative payloads named):
+
+```php
+final class Counter extends Component
+{
+    protected array $actions = ['increment'];
+
+    public function increment(int $step = 1): void
+    {
+        $this->updateState(['count' => (int) ($this->state['count'] ?? 0) + $step]);
+    }
+}
+```
+
+Only methods first declared below `Component` are callable: framework
+methods (mount, hydrate, render, authorize, state plumbing) and a reserved
+lifecycle list can never be reached from the browser, and methods not named
+in `$actions` are rejected before dispatch.
+
 ## Properties and nested components
 
 Declare server-supplied properties separately from mutable state:
@@ -64,9 +85,12 @@ final class StepCounter extends Component
         'label' => ['type' => 'string', 'default' => 'Counter'],
     ];
 
+    protected array $state = ['count' => 0];
+    protected array $actions = ['increment'];
+
     public function __construct(array $properties = [])
     {
-        parent::__construct(['count' => 0], ['increment'], $properties);
+        parent::__construct([], [], $properties);
     }
 
     public function render(): string
@@ -127,38 +151,63 @@ final class CounterParent extends Component
 }
 ```
 
-The renderer records the parent link server-side. There is no global event bus;
-events are delivered only to explicitly linked parents.
+The renderer records the parent link server-side, and a reverse child index
+lets event delivery walk the rendered tree in both directions. There is no
+global event bus: events travel only the connected tree — ancestors,
+descendants and siblings under the same rendered root.
 
-## Parent-child events
+## Events
 
-Children emit named events after successful action work:
+Components dispatch events from actions and listen with `#[On]` attributes
+or the `$listeners` map — parents, children, siblings, targeted component
+classes, and the browser are all supported targets. Full coverage:
+[`events.md`](events.md).
 
 ```php
-protected array $emits = ['count-changed'];
+use Sahil\Firefiber\Attributes\On;
 
-protected function eventPayloadRules(): array
+final class CounterParent extends Component
 {
-    return [
-        'count-changed' => [
-            'count' => 'required|integer|min:0',
-        ],
-    ];
-}
-
-public function handleAction(string $action, array $payload): array
-{
-    // update state
-    $this->emit('count-changed', ['count' => $count]);
-
-    return ['count' => $count];
+    #[On('count-changed')]
+    public function onCountChanged(int $count): void
+    {
+        $this->updateState(['last_count' => $count]);
+    }
 }
 ```
 
-After the child action, Firefiber hydrates each linked parent, validates the
-event payload, invokes its listener, persists it, and returns fresh parent
-snapshots. The browser runtime applies those snapshots under their individual
-component roots and emits `firefiber:parent-updated`.
+```php
+// inside a child action:
+$this->dispatch('count-changed', ['count' => $count]);  // broadcast up + down the tree
+$this->dispatchUp('count-changed', ['count' => $count]); // ancestors only
+$this->dispatchBrowserEvent('toast', ['text' => 'Saved']); // JS only
+```
+
+## Component styles
+
+`styles()`, `styleFile()` and `globalStyles()` attach CSS to a component.
+Ordinary styles are scoped under the component's stable `[data-fx]`
+attribute; global styles are explicit opt-in. Full coverage:
+[`styles.md`](styles.md).
+
+```php
+protected function styles(): string
+{
+    return '.card { display: flex; }';
+}
+
+protected function styleFile(): ?string
+{
+    return 'css/firefiber/card.css'; // under resources/
+}
+```
+
+## File uploads
+
+`$uploadDefinitions` declares file fields; `fiber:upload` binds inputs;
+`uploadedFile()`/`uploadedFiles()` hand actions `UploadedFile` objects with
+`store()`/`delete()` over SahilPHP storage; `firefiber:cleanup-uploads`
+sweeps expired staged files. Full coverage: [`uploads.md`](uploads.md).
 
 ## Reactive forms and validation
 
@@ -414,10 +463,14 @@ In the browser, add `fiber:upload="avatar"` to a file input or call
 emitted as `firefiber:uploadprogress`, `firefiber:uploadsuccess`, and
 `firefiber:uploaderror`.
 
-Promote or remove staged uploads through the built-in component actions
-`promoteUpload` / `removeUpload` (they re-check authorization). A
-`permanentDirectory` is validated and cannot traverse outside the storage
-root.
+Inside actions, `uploadedFile('avatar')`/`uploadedFiles('gallery')` return
+`UploadedFile` wrappers over the trusted records — `originalName()`,
+`size()`, `mimeType()`, `contents()`, `store('directory')` for permanent
+promotion, `delete()` for removal. The built-in `promoteUpload` /
+`removeUpload` actions remain available for the browser path (they
+re-check authorization independently). A `permanentDirectory` is validated
+and cannot traverse outside the storage root. See
+[`uploads.md`](uploads.md) for the full lifecycle.
 
 ## Render caching and server re-renders
 

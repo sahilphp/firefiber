@@ -191,25 +191,11 @@ class FirefiberServiceProvider extends ServiceProvider
 
         $container->alias('firefiber.components', ComponentRendererContract::class);
 
-        // Unified rendering: `html` stays native, `fire` resolves page
-        // templates under resources/views/firefiber/pages (components are
-        // the fallback) — used by `$this->fire()` / `Response::fire()`.
-        // `fiber` is registered as an alias for the same adapter.
-        $container->singleton(
-            \Sahil\Rendering\RenderManager::class,
-            static function (Container $container): \Sahil\Rendering\RenderManager {
-                /** @var ViewContract $views */
-                $views = $container->make(ViewContract::class);
-                $manager = new \Sahil\Rendering\RenderManager([
-                    new \Sahil\Rendering\Adapters\HtmlAdapter($views),
-                    new FireAdapter($container->make(ComponentRendererContract::class), $views),
-                ]);
-                $manager->alias('fiber', 'fire');
-
-                return $manager;
-            },
-        );
-
+        // Pages mount directly on the route table via Link::firefiber()
+        // — they are never rendered through the unified render manager,
+        // so `RenderManager` is left to the application's own providers.
+        // PageRegistry stays bound for discovery/resolution only; it does
+        // not publish routes.
         $container->singleton(
             PageRegistry::class,
             static fn (Container $container): PageRegistry => new PageRegistry(
@@ -273,10 +259,6 @@ class FirefiberServiceProvider extends ServiceProvider
             self::actionPath($this->app()),
             self::uploadPath($this->app()),
         );
-
-        if ($container->bound(PageRegistry::class)) {
-            $container->make(PageRegistry::class)->registerRoutes();
-        }
     }
 
     /**

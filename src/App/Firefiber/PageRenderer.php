@@ -37,6 +37,17 @@ final class PageRenderer
      */
     private array $rendering = [];
 
+    /**
+     * Style keys already emitted during this render — dedupes component
+     * `<style>` tags across nested renders.
+     *
+     * @var array<string, true>
+     */
+    private array $emittedStyleKeys = [];
+
+    /** True while `render()` is composing a full page document. */
+    private bool $composing = false;
+
     public function __construct(
         private readonly ApplicationContract $application,
         private readonly StateStorageInterface $stateStorage,
@@ -49,39 +60,217 @@ final class PageRenderer
     ) {
     }
 
-    public function render(Request $request, Page $page): Response
+    public function render(Request $request, Page $page, array $extra = []): Response
     {
-        $components = $page->components();
-        $rendered = [];
+        // Style dedupe is scoped to one page render — a long-lived renderer
+        // serving another page must emit that page's tags again.
+        $this->emittedStyleKeys = [];
+        $this->composing = true;
         $query = $this->queryValues($request);
 
-        foreach ($components as $component) {
-            if (!$component instanceof Component) {
-                throw new RuntimeException('Page components must extend Sahil\\Firefiber\\Component.');
+        try {
+            // The page is itself the outermost component: its snapshot, state
+            // record and trusted metadata hydrate future action requests exactly
+            // like an embedded component's do.
+            $this->applyQuerySync($page, $query);
+            $metadata = $this->persistComponent($page, null);
+
+            $rendered = [];
+
+            foreach ($page->components() as $component) {
+                if (!$component instanceof Component) {
+                    throw new RuntimeException('Page components must extend Sahil\\Firefiber\\Component.');
+                }
+
+                $rendered[] = $this->renderComponent($component, $page, $query);
             }
 
-            $rendered[] = $this->renderComponent($component, null, $query);
+            $attributes = $this->rootAttributes($page, $metadata);
+            $view = $page->view();
+
+            if ($view === null && $this->views !== null) {
+                $candidate = $this->conventionalView($page);
+                $view = $candidate !== null && $this->views->exists($candidate) ? $candidate : null;
+            }
+
+            if ($view !== null && $this->views !== null) {
+                $data = array_merge([
+                    'app_name' => (string) $this->application->config()->get('app.name', 'SahilPHP'),
+                    'page_title' => $page->title(),
+                    'layout' => $page->layout(),
+                ], $extra);
+                $data['components'] = $rendered;
+                $data['firefiber_components'] = $rendered;
+                // The page's reactive root attributes (`data-firefiber-*`
+                // including the signed snapshot). The template emits these on
+                // its root element — `<main {!! firefiber_attributes !!}>` —
+                // so browser actions target the page itself.
+                $data['firefiber_attributes'] = $attributes;
+                $data['firefiber_page'] = $page;
+
+                $markup = $this->views->render($view, $data);
+
+                return Response::html($this->injectStyles($markup, $this->styleTags($page)));
+            }
+
+            return Response::html($this->document($page, $rendered, $attributes));
+        } finally {
+            $this->composing = false;
         }
+    }
 
-        $view = $page->view();
+    /**
+     * Render a page's inner markup for server-driven re-renders (pages that
+     * opt into `rerenderOnAction`). The browser swaps the page root's
+     * innerHTML, so the fragment is the content inside the root element —
+     * `contentView()` when the page declares one, otherwise its composed
+     * components.
+     */
+    public function renderPageFragment(Page $page): string
+    {
+        // The page's own content only: renderComponentInner() appends
+        // composed components itself, so rendering them here too would
+        // duplicate every child with fresh ids.
+        $contentView = $page->contentView();
 
-        if ($view === null && $this->views !== null) {
-            $candidate = $this->conventionalView($page);
-            $view = $candidate !== null && $this->views->exists($candidate) ? $candidate : null;
-        }
-
-        if ($view !== null && $this->views !== null) {
-            $markup = $this->views->render($view, [
+        if ($contentView !== null && $this->views !== null && $this->views->exists($contentView)) {
+            return $this->styleTags($page, true).$this->views->render($contentView, [
                 'app_name' => (string) $this->application->config()->get('app.name', 'SahilPHP'),
                 'page_title' => $page->title(),
-                'components' => $rendered,
-                'firefiber_components' => $rendered,
+                'firefiber_page' => $page,
             ]);
-
-            return Response::html($markup);
         }
 
-        return Response::html($this->document($page, $rendered));
+        return $this->styleTags($page, true);
+    }
+
+    /**
+     * Persist the component's state + trusted metadata server-side, exactly
+     * as renderComponentInstance does, and return the metadata used for the
+     * snapshot signature.
+     *
+     * @return array<string, mixed>
+     */
+    private function persistComponent(Component $component, ?Component $parent): array
+    {
+        $metadata = [
+            'componentClass' => $component::class,
+            'parentComponentId' => $parent?->id(),
+            'parentComponentClass' => $parent !== null ? $parent::class : null,
+        ];
+
+        if ($this->session !== null && $this->session->isStarted()) {
+            $metadata['sessionId'] = $this->session->id();
+        }
+
+        $userId = $this->userId();
+        if ($userId !== null && $userId !== '') {
+            $metadata['userId'] = $userId;
+        }
+
+        $component->setTrustedMetadata($metadata);
+
+        if (!$this->stateStorage->saveState($component->id(), $component->state(), 0)) {
+            throw new RuntimeException(sprintf('Unable to persist Firefiber component [%s] state.', $component->id()));
+        }
+
+        if (!$this->stateStorage->saveState($component->id().'::__firefiber_metadata', [
+            'properties' => $component->properties(),
+            'metadata' => $component->trustedMetadata(),
+        ], 0)) {
+            throw new RuntimeException(sprintf('Unable to persist Firefiber component [%s] metadata.', $component->id()));
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * Root-element attributes (`data-firefiber-*`) for the page's reactive
+     * root, including the signed snapshot. Emitted on the page's root
+     * element inside templates via `{!! firefiber_attributes !!}`.
+     *
+     * @param array<string, mixed> $metadata
+     */
+    private function rootAttributes(Page $page, array $metadata): string
+    {
+        $snapshot = $page->snapshot(
+            $this->snapshotIntegrity,
+            time(),
+            Protocol::PROTOCOL_VERSION,
+            $metadata['sessionId'] ?? null,
+            $metadata['userId'] ?? null,
+            $page::class,
+        );
+
+        $snapshotJson = json_encode($snapshot, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        return sprintf(
+            'class="firefiber-page" data-firefiber-component="%s" data-firefiber-component-name="%s" data-firefiber-snapshot="%s" data-firefiber-endpoint="%s" data-firefiber-csrf="%s" data-fx="%s"%s',
+            self::escape($page->id()),
+            self::escape($page::class),
+            self::escape($snapshotJson),
+            self::escape($this->actionEndpoint()),
+            self::escape($this->csrfToken()),
+            self::escape($page->styleScope()),
+            $this->advancedAttributes($page, $page->lazyConfiguration(), $snapshotJson),
+        );
+    }
+
+    /**
+     * Component styles, rendered once per scope per page render.
+     *
+     * `styles()`/`styleFile()` output is scoped beneath the component's
+     * `[data-fx]` attribute; `globalStyles()` passes through unscoped.
+     * Tags carry `data-firefiber-style` keys so the browser runtime can
+     * dedupe them across reactive innerHTML swaps.
+     */
+    private function styleTags(Component $component, bool $force = false): string
+    {
+        $collected = $component->collectedStyles();
+        $tags = '';
+
+        if ($collected['scoped'] !== '') {
+            $key = $component->styleScope();
+
+            if ($force || !isset($this->emittedStyleKeys[$key])) {
+                $this->emittedStyleKeys[$key] = true;
+                $scoped = \Sahil\Firefiber\Styles\ScopedStylesheet::scope(
+                    $collected['scoped'],
+                    '[data-fx="'.$key.'"]',
+                );
+                $tags .= '<style data-firefiber-style="'.self::escape($key).'">'.$scoped.'</style>';
+            }
+        }
+
+        if ($collected['global'] !== '') {
+            $key = 'global:'.$component->styleScope();
+
+            if ($force || !isset($this->emittedStyleKeys[$key])) {
+                $this->emittedStyleKeys[$key] = true;
+                $tags .= '<style data-firefiber-style="'.self::escape($key).'">'.$collected['global'].'</style>';
+            }
+        }
+
+        return $tags;
+    }
+
+    /**
+     * Inject `<style>` tags into a rendered page document — inside `<head>`
+     * when present, otherwise at the top of the markup.
+     */
+    private function injectStyles(string $markup, string $tags): string
+    {
+        if ($tags === '') {
+            return $markup;
+        }
+
+        $replaced = preg_replace('/<\/head\s*>/i', $tags.'</head>', $markup, 1, $count);
+
+        if ($replaced !== null && $count > 0) {
+            return $replaced;
+        }
+
+        return $tags.$markup;
     }
 
     /**
@@ -113,6 +302,12 @@ final class PageRenderer
     {
         $objectId = spl_object_id($component);
 
+        if ($this->rendering === [] && !$this->composing) {
+            // A standalone renderComponent starts a fresh composition —
+            // nested/page-driven renders keep sharing the dedupe set.
+            $this->emittedStyleKeys = [];
+        }
+
         if (isset($this->rendering[$objectId])) {
             throw new RuntimeException(sprintf(
                 'Circular Firefiber component nesting detected while rendering [%s].',
@@ -133,33 +328,7 @@ final class PageRenderer
     {
         $this->applyQuerySync($component, $query);
 
-        $metadata = [
-            'componentClass' => $component::class,
-            'parentComponentId' => $parent?->id(),
-            'parentComponentClass' => $parent ? $parent::class : null,
-        ];
-
-        if ($this->session !== null && $this->session->isStarted()) {
-            $metadata['sessionId'] = $this->session->id();
-        }
-
-        $userId = $this->userId();
-        if ($userId !== null && $userId !== '') {
-            $metadata['userId'] = $userId;
-        }
-
-        $component->setTrustedMetadata($metadata);
-
-        if (!$this->stateStorage->saveState($component->id(), $component->state(), 0)) {
-            throw new RuntimeException(sprintf('Unable to persist Firefiber component [%s] state.', $component->id()));
-        }
-
-        if (!$this->stateStorage->saveState($component->id().'::__firefiber_metadata', [
-            'properties' => $component->properties(),
-            'metadata' => $component->trustedMetadata(),
-        ], 0)) {
-            throw new RuntimeException(sprintf('Unable to persist Firefiber component [%s] metadata.', $component->id()));
-        }
+        $metadata = $this->persistComponent($component, $parent);
 
         if ($parent !== null) {
             $this->parentRegistry?->link($parent, $component);
@@ -186,13 +355,15 @@ final class PageRenderer
         $configuredAttributes = $this->advancedAttributes($component, $lazy, $snapshotJson);
 
         return sprintf(
-            '<section class="firefiber-component" data-firefiber-component="%s" data-firefiber-component-name="%s" data-firefiber-snapshot="%s" data-firefiber-endpoint="%s" data-firefiber-csrf="%s"%s>%s</section>',
+            '<section class="firefiber-component" data-firefiber-component="%s" data-firefiber-component-name="%s" data-firefiber-snapshot="%s" data-firefiber-endpoint="%s" data-firefiber-csrf="%s" data-fx="%s"%s>%s%s</section>',
             self::escape($component->id()),
             self::escape($component::class),
             self::escape($snapshotJson),
             self::escape($this->actionEndpoint()),
             self::escape($this->csrfToken()),
+            self::escape($component->styleScope()),
             $configuredAttributes,
+            $this->styleTags($component),
             $inner,
         );
     }
@@ -204,7 +375,7 @@ final class PageRenderer
      */
     public function renderFragment(Component $component): string
     {
-        return $this->renderComponentInner($component, [], $component->trustedMetadata());
+        return $this->styleTags($component, true).$this->renderComponentInner($component, [], $component->trustedMetadata());
     }
 
     private function renderComponentInner(Component $component, array $query, array $metadata): string
@@ -392,7 +563,7 @@ final class PageRenderer
         return is_string($path) && $path !== '' && str_starts_with($path, '/') ? $path : '/firefiber/uploads';
     }
 
-    private function document(Page $page, array $components): string
+    private function document(Page $page, array $components, string $rootAttributes = ''): string
     {
         $body = implode("\n", $components);
 
@@ -400,8 +571,9 @@ final class PageRenderer
             .'<meta name="viewport" content="width=device-width, initial-scale=1">'
             .'<title>'.self::escape($page->title()).'</title>'
             .'<link rel="stylesheet" href="/firefiber/assets/firefiber.min.css">'
+            .$this->styleTags($page)
             .'</head><body>'
-            .'<main><h1>'.self::escape($page->title()).'</h1>'
+            .'<main'.$rootAttributes.'><h1>'.self::escape($page->title()).'</h1>'
             .$body
             .'</main>'
             .'<script src="/firefiber/assets/runtime.min.js" defer></script>'

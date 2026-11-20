@@ -1020,6 +1020,32 @@
         }
     }
 
+    /**
+     * Surface a server-queued component event as a bubbling CustomEvent.
+     *
+     * The plain event name (`post-created`) fires on the emitting
+     * component's root so `firefiber:on`/inline listeners and delegated
+     * handlers see it bubble to the document; a namespaced
+     * `firefiber:<name>` mirror fires on the document for global
+     * `Firefiber.on()` listeners regardless of where the component sits.
+     */
+    function dispatchServerEvent(event, sourceComponentId) {
+        if (!event || typeof event !== 'object' || typeof event.name !== 'string' || event.name === '') {
+            return;
+        }
+
+        var detail = {
+            payload: event.payload && typeof event.payload === 'object' ? event.payload : {},
+            componentId: sourceComponentId,
+            to: event.to || 'broadcast',
+            delivered: Array.isArray(event.delivered) ? event.delivered : [],
+        };
+
+        var sourceRoot = findComponentRoot(sourceComponentId);
+        emitRuntimeEvent(sourceRoot || (root && root.documentElement) || null, event.name, detail);
+        emitRuntimeEvent(root && root.documentElement ? root.documentElement : sourceRoot, 'firefiber:' + event.name, detail);
+    }
+
     function parseClickValue(context) {
         var modifiers = Array.isArray(context.modifiers) ? context.modifiers.slice() : [];
         var value = String(context.value || '').trim();
@@ -3626,6 +3652,13 @@
 
                     clearValidationErrors(config.componentId);
 
+                    var deliveredEvents = Array.isArray(responsePayload.events)
+                        ? responsePayload.events
+                        : [];
+                    for (var eventIndex = 0; eventIndex < deliveredEvents.length; eventIndex++) {
+                        dispatchServerEvent(deliveredEvents[eventIndex], config.componentId);
+                    }
+
                     var parentSnapshots = Array.isArray(responsePayload.parentSnapshots)
                         ? responsePayload.parentSnapshots
                         : [];
@@ -5097,9 +5130,34 @@
             cleanupNode(oldChildren[oldIndex]);
         }
 
+        dedupeStyleTags();
         scanNode(componentRoot);
 
         return true;
+    }
+
+    /**
+     * Drop duplicate component `<style data-firefiber-style>` tags after a
+     * reactive swap. The first tag for each scope key wins — identical keys
+     * mean identical CSS (the key derives from the component class), so
+     * later copies are redundant.
+     */
+    function dedupeStyleTags() {
+        var doc = root && root.querySelectorAll ? root : document;
+        var tags = doc.querySelectorAll('style[data-firefiber-style]');
+        var seen = {};
+
+        for (var index = 0; index < tags.length; index++) {
+            var key = tags[index].getAttribute('data-firefiber-style');
+
+            if (seen[key]) {
+                if (tags[index].parentNode) {
+                    tags[index].parentNode.removeChild(tags[index]);
+                }
+            } else {
+                seen[key] = true;
+            }
+        }
     }
 
     // -------------------------------- uploads ----------------------------
@@ -5464,6 +5522,54 @@
          * the action detail; progress arrives as firefiber:uploadprogress.
          */
         upload: uploadFiles,
+
+        /**
+         * Listen for a Firefiber event — server-dispatched (`dispatch()`,
+         * `dispatchBrowserEvent()`) and browser-dispatched events both
+         * arrive as `firefiber:<name>` CustomEvents on the document.
+         * Returns an unsubscribe function.
+         */
+        on: function (name, callback) {
+            var listener = function (event) {
+                callback(event.detail || {}, event);
+            };
+
+            (root && root.documentElement ? root.documentElement : document.documentElement)
+                .addEventListener('firefiber:' + String(name), listener);
+
+            return function () {
+                (root && root.documentElement ? root.documentElement : document.documentElement)
+                    .removeEventListener('firefiber:' + String(name), listener);
+            };
+        },
+
+        /**
+         * Dispatch a browser-side Firefiber event. Components listening via
+         * `firefiber:on`/`Firefiber.on` observe it; it does NOT reach the
+         * server by itself — server listeners only see events dispatched
+         * from PHP inside an action.
+         */
+        dispatch: function (name, payload) {
+            dispatchServerEvent({ name: String(name), payload: payload || {}, to: 'broadcast', delivered: [] }, null);
+        },
+
+        /**
+         * Dispatch a browser-side event onto a specific component root (and
+         * bubbling up from it), identified by component id.
+         */
+        dispatchTo: function (componentId, name, payload) {
+            var detail = { name: String(name), payload: payload || {}, to: 'self', delivered: [] };
+            var target = findComponentRoot(componentId);
+
+            if (target) {
+                emitRuntimeEvent(target, detail.name, {
+                    payload: detail.payload,
+                    componentId: componentId,
+                    to: 'self',
+                    delivered: [],
+                });
+            }
+        },
 
         /** Force a lazy component to load (resets the retry budget). */
         loadLazy: function loadLazy(componentId) {
